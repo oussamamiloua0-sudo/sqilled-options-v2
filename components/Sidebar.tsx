@@ -91,7 +91,7 @@ export function Sidebar() {
                 key={item.name}
                 href={item.href}
                 title={!expanded ? item.name : undefined}
-                className={`flex items-center py-3 rounded-xl mx-2 transition-colors whitespace-nowrap ${ICON_PADDING}
+                className={`flex items-center py-3 rounded-xl mx-2 transition-colors whitespace-nowrap ${expanded ? ICON_PADDING : 'justify-center'}
                   ${isActive
                     ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
                     : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-white'
