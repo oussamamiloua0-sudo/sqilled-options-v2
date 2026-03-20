@@ -73,7 +73,7 @@ export function Sidebar() {
         `}
       >
         {/* Logo row — icon stays fixed, text clips away */}
-        <div className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)] ${ICON_PADDING}`}>
+        <div className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)] ${expanded ? ICON_PADDING : 'justify-center'}`}>
           <SqilledMark />
           <span className={`ml-3 text-xl font-bold tracking-tight text-white whitespace-nowrap
             transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
