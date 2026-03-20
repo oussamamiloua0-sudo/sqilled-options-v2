@@ -17,7 +17,7 @@ import {
 
 function SqilledMark() {
   return (
-    <Image src="/logo.png" alt="Sqilled" width={48} height={48} style={{ width: 48, height: 48, flexShrink: 0 }} />
+    <Image src="/logo.png" alt="Sqilled" width={40} height={40} style={{ width: 40, height: 40, flexShrink: 0 }} />
   );
 }
 
@@ -73,7 +73,7 @@ export function Sidebar() {
         `}
       >
         {/* Logo row — icon stays fixed, text clips away */}
-        <div className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)] ${expanded ? ICON_PADDING : 'justify-center'}`}>
+        <div className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)] ${ICON_PADDING}`}>
           <SqilledMark />
           <span className={`ml-3 text-xl font-bold tracking-tight text-white whitespace-nowrap
             transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
