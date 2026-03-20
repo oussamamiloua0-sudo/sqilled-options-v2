@@ -1,0 +1,5 @@
+{
+  "name": "Alpha Metrics",
+  "description": "Options analytics tool for portfolio performance and covered call overlay simulation.",
+  "requestFramePermissions": []
+}
