@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useRef } from 'react';
+import Image from 'next/image';
 import {
   Briefcase,
   LineChart,
@@ -16,10 +17,7 @@ import {
 
 function SqilledMark({ className = '' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      {/* Upper chevron arm */}
-      <path d="M24 7L31 14L20 23H28L15 33L9 26L20 17H12Z" fill="#F56C49"/>
-    </svg>
+    <Image src="/logo.png" alt="Sqilled" width={36} height={36} className={className} />
   );
 }
 
