@@ -13,6 +13,7 @@ import {
   X,
   Pin,
   PinOff,
+  LayoutDashboard,
 } from 'lucide-react';
 
 function SqilledMark() {
@@ -22,6 +23,7 @@ function SqilledMark() {
 }
 
 const navItems = [
+  { name: 'Dashboard',            href: '/dashboard',  icon: LayoutDashboard },
   { name: 'Portfolio',            href: '/portfolio',  icon: Briefcase },
   { name: 'Analytics',            href: '/analytics',  icon: LineChart  },
   { name: 'Covered Call Overlay', href: '/overlay',    icon: Layers     },
@@ -84,7 +86,7 @@ export function Sidebar() {
         {/* Nav — icon position never changes, text fades then clips */}
         <nav className="flex-1 py-4 space-y-1">
           {navItems.map((item) => {
-            const isActive = pathname === item.href || (pathname === '/' && item.href === '/portfolio');
+            const isActive = pathname === item.href || (pathname === '/' && item.href === '/dashboard');
             const Icon = item.icon;
             return (
               <Link
@@ -134,7 +136,7 @@ export function Sidebar() {
         </div>
         <nav className="flex-1 py-4 px-4 space-y-1">
           {navItems.map((item) => {
-            const isActive = pathname === item.href || (pathname === '/' && item.href === '/portfolio');
+            const isActive = pathname === item.href || (pathname === '/' && item.href === '/dashboard');
             const Icon = item.icon;
             return (
               <Link
