@@ -151,7 +151,7 @@ export default function DashboardPage() {
               <YAxis tick={{ fill: '#94A3B8', fontSize: 11 }} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#1E293B', borderColor: '#334155', color: '#F8FAFC', borderRadius: 8, fontSize: 12 }}
-                formatter={(v: number) => [`${v.toFixed(1)}%`, 'IV']}
+                formatter={(v: unknown) => [`${(v as number).toFixed(1)}%`, 'IV']}
               />
               <Line type="monotone" dataKey="iv" stroke="#F56C49" strokeWidth={2} dot={false} />
             </LineChart>
