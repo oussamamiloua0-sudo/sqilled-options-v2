@@ -17,7 +17,7 @@ import {
 function SqilledMark({ className = '' }: { className?: string }) {
   return (
     <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      <g transform="rotate(20, 20, 20)">
+      <g transform="rotate(-20, 20, 20)">
         <path
           d="M26.5 13H17.5C15.567 13 14 14.567 14 16.5C14 18.433 15.567 20 17.5 20H22.5C24.433 20 26 21.567 26 23.5C26 25.433 24.433 27 22.5 27H13.5"
           stroke="#F56C49" strokeWidth="4" strokeLinecap="round"
@@ -78,17 +78,16 @@ export function Sidebar() {
           ${expanded ? 'w-64' : 'w-16'}
         `}
       >
-        {/* Logo row */}
-        <div className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)]
-          ${expanded ? ICON_PADDING : 'justify-center'}`}>
-          <SqilledMark className="w-10 h-10 flex-shrink-0" />
+        {/* Logo row — icon stays fixed, text clips away */}
+        <div className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)] ${ICON_PADDING}`}>
+          <SqilledMark className="w-8 h-8 flex-shrink-0" />
           <span className={`ml-3 text-xl font-bold tracking-tight text-white whitespace-nowrap
-            transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
+            transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
             sqilled Options
           </span>
         </div>
 
-        {/* Nav */}
+        {/* Nav — icon position never changes, text fades then clips */}
         <nav className="flex-1 py-4 space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href || (pathname === '/' && item.href === '/portfolio');
@@ -98,16 +97,15 @@ export function Sidebar() {
                 key={item.name}
                 href={item.href}
                 title={!expanded ? item.name : undefined}
-                className={`flex items-center py-3 rounded-xl mx-2 transition-colors whitespace-nowrap
-                  ${expanded ? ICON_PADDING : 'justify-center px-3'}
+                className={`flex items-center py-3 rounded-xl mx-2 transition-colors whitespace-nowrap ${ICON_PADDING}
                   ${isActive
                     ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
                     : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-white'
                   }`}
               >
-                <Icon className="w-[22px] h-[22px] flex-shrink-0" />
+                <Icon className="w-5 h-5 flex-shrink-0" />
                 <span className={`ml-3 font-medium transition-opacity duration-200
-                  ${expanded ? 'opacity-100' : 'opacity-0 w-0 overflow-hidden'}`}>
+                  ${expanded ? 'opacity-100' : 'opacity-0'}`}>
                   {item.name}
                 </span>
               </Link>
