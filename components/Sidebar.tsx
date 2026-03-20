@@ -53,7 +53,7 @@ export function Sidebar() {
       {/* ── Mobile topbar ── */}
       <div className="md:hidden flex items-center justify-between bg-[var(--color-surface)] border-b border-[var(--color-border)] p-4">
         <div className="flex items-center space-x-2">
-          <SqilledMark className="w-7 h-7 flex-shrink-0" />
+          <SqilledMark className="w-12 h-12 flex-shrink-0" />
           <span className="text-lg font-bold tracking-tight text-white">sqilled Options</span>
         </div>
         <button onClick={() => setIsOpen(!isOpen)} className="text-[var(--color-text-muted)] hover:text-white">
@@ -74,7 +74,7 @@ export function Sidebar() {
       >
         {/* Logo row — icon stays fixed, text clips away */}
         <div className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)] ${ICON_PADDING}`}>
-          <SqilledMark className="w-8 h-8 flex-shrink-0" />
+          <SqilledMark className="w-12 h-12 flex-shrink-0" />
           <span className={`ml-3 text-xl font-bold tracking-tight text-white whitespace-nowrap
             transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
             sqilled Options
@@ -129,7 +129,7 @@ export function Sidebar() {
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="flex items-center border-b border-[var(--color-border)] h-[73px] px-6 space-x-3 flex-shrink-0 mt-16">
-          <SqilledMark className="w-8 h-8 flex-shrink-0" />
+          <SqilledMark className="w-12 h-12 flex-shrink-0" />
           <span className="text-xl font-bold tracking-tight text-white">sqilled Options</span>
         </div>
         <nav className="flex-1 py-4 px-4 space-y-1">
