@@ -169,7 +169,7 @@ export default function OverlayPage() {
   const [riskTable, setRiskTable]     = useState<any[]>([]);
   const [statsData, setStatsData]     = useState<Record<string, any>>({});
   const [bestScenario, setBestScenario] = useState<ScenarioKey>('exit50');
-  const [tradeLog, setTradeLog]       = useState<Record<ScenarioKey, any[]>>(MOCK_TRADE_LOG);
+  const [tradeLog, setTradeLog]       = useState<Partial<Record<ScenarioKey, any[]>>>({});
 
   const handleSimulate = async () => {
     setIsSimulating(true);
@@ -197,8 +197,7 @@ export default function OverlayPage() {
       setChartData(chart);
       setRiskTable(data.risk_table);
       setStatsData(data.stats);
-      const tl = data.trade_log;
-      setTradeLog((tl && tl.exit25?.length && tl.exit50?.length) ? tl : MOCK_TRADE_LOG);
+      setTradeLog(data.trade_log ?? {});
 
       // Best scenario by total_return
       const best = data.risk_table.reduce((a: any, b: any) =>
@@ -220,8 +219,9 @@ export default function OverlayPage() {
 
   const activeStats = statsData[activeScenario] ?? {};
   const activeRisk  = riskTable.find(r => r.key === activeScenario) ?? {};
-  const rawLog      = tradeLog[activeScenario];
-  const activeLog   = (Array.isArray(rawLog) && rawLog.length > 0) ? rawLog : MOCK_TRADE_LOG[activeScenario];
+  const activeLog   = hasSimulated
+    ? (tradeLog[activeScenario] ?? [])
+    : MOCK_TRADE_LOG[activeScenario];
 
   const RESULT_TABS: { key: ResultTab; label: string; icon: any }[] = [
     { key: 'summary', label: 'Summary',  icon: BarChart2  },
