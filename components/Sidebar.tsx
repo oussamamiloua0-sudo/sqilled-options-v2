@@ -17,12 +17,8 @@ import {
 function SqilledMark({ className = '' }: { className?: string }) {
   return (
     <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      <g transform="rotate(-20, 20, 20)">
-        <path
-          d="M26.5 13H17.5C15.567 13 14 14.567 14 16.5C14 18.433 15.567 20 17.5 20H22.5C24.433 20 26 21.567 26 23.5C26 25.433 24.433 27 22.5 27H13.5"
-          stroke="#F56C49" strokeWidth="4" strokeLinecap="round"
-        />
-      </g>
+      {/* Upper chevron arm */}
+      <path d="M24 7L31 14L20 23H28L15 33L9 26L20 17H12Z" fill="#F56C49"/>
     </svg>
   );
 }
