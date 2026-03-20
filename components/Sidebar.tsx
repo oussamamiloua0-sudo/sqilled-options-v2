@@ -8,12 +8,23 @@ import {
   LineChart,
   Layers,
   Activity,
-  Hexagon,
   Menu,
   X,
   Pin,
   PinOff,
 } from 'lucide-react';
+
+function SqilledMark({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+      <rect width="40" height="40" rx="9" fill="#F56C49"/>
+      <path
+        d="M26.5 13H17.5C15.567 13 14 14.567 14 16.5C14 18.433 15.567 20 17.5 20H22.5C24.433 20 26 21.567 26 23.5C26 25.433 24.433 27 22.5 27H13.5"
+        stroke="white" strokeWidth="3" strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 const navItems = [
   { name: 'Portfolio',            href: '/portfolio',  icon: Briefcase },
@@ -47,7 +58,7 @@ export function Sidebar() {
       {/* ── Mobile topbar ── */}
       <div className="md:hidden flex items-center justify-between bg-[var(--color-surface)] border-b border-[var(--color-border)] p-4">
         <div className="flex items-center space-x-2">
-          <Hexagon className="w-6 h-6 text-[var(--color-primary)]" />
+          <SqilledMark className="w-7 h-7 flex-shrink-0" />
           <span className="text-lg font-bold tracking-tight text-white">sqilled Options</span>
         </div>
         <button onClick={() => setIsOpen(!isOpen)} className="text-[var(--color-text-muted)] hover:text-white">
@@ -68,7 +79,7 @@ export function Sidebar() {
       >
         {/* Logo row — icon stays fixed, text clips away */}
         <div className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)] ${ICON_PADDING}`}>
-          <Hexagon className="w-8 h-8 text-[var(--color-primary)] flex-shrink-0" />
+          <SqilledMark className="w-8 h-8 flex-shrink-0" />
           <span className={`ml-3 text-xl font-bold tracking-tight text-white whitespace-nowrap
             transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
             sqilled Options
@@ -123,7 +134,7 @@ export function Sidebar() {
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="flex items-center border-b border-[var(--color-border)] h-[73px] px-6 space-x-3 flex-shrink-0 mt-16">
-          <Hexagon className="w-8 h-8 text-[var(--color-primary)] flex-shrink-0" />
+          <SqilledMark className="w-8 h-8 flex-shrink-0" />
           <span className="text-xl font-bold tracking-tight text-white">sqilled Options</span>
         </div>
         <nav className="flex-1 py-4 px-4 space-y-1">
