@@ -9,6 +9,7 @@ if (typeof window !== 'undefined') {
     ui_host: 'https://us.posthog.com',
     capture_pageview: false,
     capture_pageleave: true,
+    defaults: '2026-01-30',
   });
 }
 
