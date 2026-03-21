@@ -10,6 +10,7 @@ import {
   Calendar, BarChart2, Clock, Trophy, AlertCircle, List, LayoutList,
 } from 'lucide-react';
 import { usePortfolio, Position } from '@/context/PortfolioContext';
+import { usePostHog } from 'posthog-js/react';
 
 type ViewMode = 'pct' | 'dollar';
 type ResultTab = 'summary' | 'details' | 'logs';
@@ -156,6 +157,7 @@ export default function OverlayPage() {
   const [viewMode, setViewMode]     = useState<ViewMode>('pct');
   const [datePreset, setDatePreset] = useState<Preset>('custom');
   const [isSimulating, setIsSimulating]   = useState(false);
+  const posthog = usePostHog();
   const [hasSimulated, setHasSimulated]   = useState(false);
   const [activeScenario, setActiveScenario] = useState<ScenarioKey>('exit50');
   const [error, setError]           = useState<string | null>(null);
@@ -174,6 +176,7 @@ export default function OverlayPage() {
   const handleSimulate = async () => {
     setIsSimulating(true);
     setError(null);
+    posthog?.capture('simulation_run', { symbol: ticker, delta, dte, start: startDate, end: endDate });
     try {
       const res = await fetch('/api/simulate', {
         method: 'POST',
@@ -377,7 +380,7 @@ export default function OverlayPage() {
             {RESULT_TABS.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
-                onClick={() => setActiveResultTab(key)}
+                onClick={() => { setActiveResultTab(key); posthog?.capture('overlay_tab_switch', { tab: key }); }}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   activeResultTab === key
                     ? 'bg-[var(--color-primary)] text-white shadow-sm'

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, X, Loader2, Pencil, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { usePostHog } from 'posthog-js/react';
 
 const emptyForm = { symbol: '', shares: '', entryPrice: '', entryDate: '', currentPrice: '' };
 
@@ -47,6 +48,7 @@ async function fetchLatestClose(symbol: string): Promise<number | null> {
 
 export default function PortfolioPage() {
   const { positions, setPositions } = usePortfolio();
+  const posthog = usePostHog();
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -193,6 +195,7 @@ export default function PortfolioPage() {
         currentPrice: parseFloat(form.currentPrice),
       } : p));
     } else {
+      posthog?.capture('position_added', { symbol: form.symbol.toUpperCase().trim(), shares: form.shares });
       setPositions([...positions, {
         id: Date.now(),
         symbol: form.symbol.toUpperCase().trim(),
