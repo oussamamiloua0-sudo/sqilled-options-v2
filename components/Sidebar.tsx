@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useRef } from 'react';
 import Image from 'next/image';
+import { UserButton } from '@clerk/nextjs';
 import {
   Briefcase,
   LineChart,
@@ -54,10 +55,10 @@ export function Sidebar() {
     <>
       {/* ── Mobile topbar ── */}
       <div className="md:hidden flex items-center justify-between bg-[var(--color-surface)] border-b border-[var(--color-border)] p-4">
-        <div className="flex items-center space-x-2">
+        <Link href="/dashboard" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
           <SqilledMark />
           <span className="text-lg font-bold tracking-tight text-white">sqilled Options</span>
-        </div>
+        </Link>
         <button onClick={() => setIsOpen(!isOpen)} className="text-[var(--color-text-muted)] hover:text-white">
           {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
@@ -75,13 +76,13 @@ export function Sidebar() {
         `}
       >
         {/* Logo row — icon stays fixed, text clips away */}
-        <div className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)] px-[12px]`}>
+        <Link href="/dashboard" className={`flex items-center h-[73px] flex-shrink-0 border-b border-[var(--color-border)] px-[12px] hover:opacity-80 transition-opacity`}>
           <SqilledMark />
           <span className={`ml-3 text-xl font-bold tracking-tight text-white whitespace-nowrap
             transition-opacity duration-200 ${expanded ? 'opacity-100' : 'opacity-0'}`}>
             sqilled Options
           </span>
-        </div>
+        </Link>
 
         {/* Nav — icon position never changes, text fades then clips */}
         <nav className="flex-1 py-4 space-y-1">
@@ -109,8 +110,15 @@ export function Sidebar() {
           })}
         </nav>
 
-        {/* Pin button — fades in when expanded */}
-        <div className={`border-t border-[var(--color-border)] py-3 flex ${ICON_PADDING}`}>
+        {/* Bottom: user avatar + pin */}
+        <div className={`border-t border-[var(--color-border)] py-3 flex items-center justify-between ${ICON_PADDING}`}>
+          <UserButton
+            appearance={{
+              elements: {
+                avatarBox: 'w-8 h-8',
+              },
+            }}
+          />
           <button
             onClick={() => setPinned(p => !p)}
             title={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}
@@ -130,10 +138,10 @@ export function Sidebar() {
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="flex items-center border-b border-[var(--color-border)] h-[73px] px-6 space-x-3 flex-shrink-0 mt-16">
+        <Link href="/dashboard" onClick={() => setIsOpen(false)} className="flex items-center border-b border-[var(--color-border)] h-[73px] px-6 space-x-3 flex-shrink-0 mt-16 hover:opacity-80 transition-opacity">
           <SqilledMark />
           <span className="text-xl font-bold tracking-tight text-white">sqilled Options</span>
-        </div>
+        </Link>
         <nav className="flex-1 py-4 px-4 space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href || (pathname === '/' && item.href === '/dashboard');
@@ -155,6 +163,9 @@ export function Sidebar() {
             );
           })}
         </nav>
+        <div className="border-t border-[var(--color-border)] p-4">
+          <UserButton appearance={{ elements: { avatarBox: 'w-8 h-8' } }} />
+        </div>
       </div>
 
       {/* Mobile backdrop */}
