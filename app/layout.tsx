@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Sidebar } from '@/components/Sidebar';
 import { Providers } from '@/components/Providers';
+import { Analytics } from '@vercel/analytics/next';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -34,6 +35,7 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
             </footer>
           </main>
         </Providers>
+        <Analytics />
       </body>
     </html>
   );
