@@ -217,19 +217,20 @@ export default function OverlayPage() {
   };
 
   const downloadLogCSV = () => {
-    const headers = ['Open Date','Expiry','Strike','Premium','Close Px','Option P&L','Option %','Equity P&L','Equity %','Total P&L','Total %','Days'];
+    const headers = ['Open Date','Expiry','Strike','Premium ($)','Close Px ($)','Option P&L ($)','Option %','Equity P&L ($)','Equity %','Total P&L ($)','Total %','Days'];
     const rows = activeLog.map((t: any) => {
       const premUsd  = Number(t.premium_usd ?? t.premium * 100);
+      const closePx  = Number(t.close_price) * 100;
       const spyBase  = t.spy_entry ? t.spy_entry * 100 : null;
-      const optPct   = premUsd > 0 ? (Number(t.option_pnl) / premUsd * 100).toFixed(1) : '';
-      const sharePct = spyBase && t.share_pnl != null ? (Number(t.share_pnl) / spyBase * 100).toFixed(1) : '';
-      const totalPct = spyBase && t.total_pnl != null ? (Number(t.total_pnl) / spyBase * 100).toFixed(1) : '';
+      const optPct   = premUsd > 0 ? `${(Number(t.option_pnl) / premUsd * 100).toFixed(1)}%` : '';
+      const sharePct = spyBase && t.share_pnl != null ? `${(Number(t.share_pnl) / spyBase * 100).toFixed(1)}%` : '';
+      const totalPct = spyBase && t.total_pnl != null ? `${(Number(t.total_pnl) / spyBase * 100).toFixed(1)}%` : '';
       return [
         t.open_date, t.expiry, Number(t.strike).toFixed(2), premUsd.toFixed(2),
-        Number(t.close_price).toFixed(2),
+        closePx.toFixed(2),
         Number(t.option_pnl).toFixed(2), optPct,
-        t.share_pnl != null ? Number(t.share_pnl).toFixed(2) : '',  sharePct,
-        t.total_pnl != null ? Number(t.total_pnl).toFixed(2) : '',  totalPct,
+        t.share_pnl != null ? Number(t.share_pnl).toFixed(2) : '', sharePct,
+        t.total_pnl != null ? Number(t.total_pnl).toFixed(2) : '', totalPct,
         t.days_held,
       ];
     });
