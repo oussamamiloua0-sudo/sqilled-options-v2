@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useRef } from 'react';
 import Image from 'next/image';
-import { UserButton, SignedIn } from '@clerk/nextjs';
+import dynamic from 'next/dynamic';
+const UserButton = dynamic(() => import('@clerk/nextjs').then(m => ({ default: m.UserButton })), { ssr: false });
 import {
   Briefcase,
   LineChart,
