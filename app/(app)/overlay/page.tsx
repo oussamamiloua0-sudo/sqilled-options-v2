@@ -152,7 +152,7 @@ function PnLTooltip({ active, payload }: any) {
       <p className="text-[var(--color-text-muted)]">Days held: <span className="text-white">{t.days_held}</span></p>
       <div className="border-t border-[#334155] my-1" />
       <p className="text-[var(--color-text-muted)]">Option P&amp;L: <span className={t.option_pnl >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}>{t.option_pnl >= 0 ? '+' : ''}${Number(t.option_pnl).toFixed(2)}</span></p>
-      {hasShare && <p className="text-[var(--color-text-muted)]">Share P&amp;L: <span className={t.share_pnl >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}>{t.share_pnl >= 0 ? '+' : ''}${Number(t.share_pnl).toFixed(2)} <span className="text-[var(--color-text-muted)]">(SPY {t.spy_entry?.toFixed(2)} → {t.spy_exit?.toFixed(2)})</span></span></p>}
+      {hasShare && <p className="text-[var(--color-text-muted)]">Equity P&amp;L: <span className={t.share_pnl >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}>{t.share_pnl >= 0 ? '+' : ''}${Number(t.share_pnl).toFixed(2)} <span className="text-[var(--color-text-muted)]">(SPY {t.spy_entry?.toFixed(2)} → {t.spy_exit?.toFixed(2)})</span></span></p>}
       {hasShare && <p className="text-[var(--color-text-muted)] font-bold">Total P&amp;L: <span className={t.total_pnl >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}>{t.total_pnl >= 0 ? '+' : ''}${Number(t.total_pnl).toFixed(2)}</span></p>}
     </div>
   );
@@ -164,7 +164,7 @@ export default function OverlayPage() {
   const [delta, setDelta]           = useState(0.25);
   const [dte, setDte]               = useState<30 | 45 | 60>(45);
   const [startDate, setStartDate]   = useState('2023-01-01');
-  const [endDate, setEndDate]       = useState('2024-06-30');
+  const [endDate, setEndDate]       = useState(() => new Date().toISOString().slice(0, 10));
   const [showScenarios, setShowScenarios] = useState(true);
   const [viewMode, setViewMode]     = useState<ViewMode>('pct');
   const [datePreset, setDatePreset] = useState<Preset>('custom');
@@ -193,6 +193,101 @@ export default function OverlayPage() {
   const [gridFilterDelta, setGridFilterDelta]       = useState('all');
   const [gridFilterDte, setGridFilterDte]           = useState('all');
   const [gridSelectedRow, setGridSelectedRow]       = useState<any | null>(null);
+  const [gridSortKey, setGridSortKey]               = useState<string>('totalPnl');
+  const [gridSortDir, setGridSortDir]               = useState<'asc' | 'desc'>('desc');
+  const [logSortKey, setLogSortKey]                 = useState<string>('open_date');
+  const [logSortDir, setLogSortDir]                 = useState<'asc' | 'desc'>('asc');
+  const [strategy, setStrategy]                     = useState<'cc' | 'csp'>('cc');
+
+  // Combo drill-down: re-run simulation when grid row is clicked
+  const [comboChartData, setComboChartData]   = useState<any[]>([]);
+  const [comboStatsData, setComboStatsData]   = useState<Record<string, any>>({});
+  const [comboTradeLog, setComboTradeLog]     = useState<Partial<Record<ScenarioKey, any[]>>>({});
+  const [comboRiskTable, setComboRiskTable]   = useState<any[]>([]);
+  const [isLoadingCombo, setIsLoadingCombo]   = useState(false);
+
+  const handleGridSort = (key: string) => {
+    if (gridSortKey === key) {
+      setGridSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setGridSortKey(key);
+      setGridSortDir('desc');
+    }
+  };
+
+  const handleLogSort = (key: string) => {
+    if (logSortKey === key) {
+      setLogSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setLogSortKey(key);
+      setLogSortDir('desc');
+    }
+  };
+
+  const handleGridRowClick = async (row: any) => {
+    // Deselect
+    if (gridSelectedRow?.combo === row.combo && gridSelectedRow?.scenarioKey === row.scenarioKey) {
+      setGridSelectedRow(null);
+      setComboChartData([]);
+      setComboStatsData({});
+      setComboTradeLog({});
+      setComboRiskTable([]);
+      return;
+    }
+    setGridSelectedRow(row);
+    setIsLoadingCombo(true);
+    try {
+      const res = await fetch('/api/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: ticker, delta: row.delta, dte: row.dte, start: startDate, end: endDate, strategy }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const { dates, exit25, exit50, exitExp } = data.curves;
+      setComboChartData(dates.map((d: string, i: number) => ({
+        month: d.slice(0, 7), exit25: exit25[i], exit50: exit50[i], exitExp: exitExp[i],
+      })));
+      setComboStatsData(data.stats ?? {});
+      setComboTradeLog(data.trade_log ?? {});
+      setComboRiskTable(data.risk_table ?? []);
+    } catch (_) {} finally {
+      setIsLoadingCombo(false);
+    }
+  };
+
+  const downloadLogCSV = () => {
+    const headers = strategy === 'csp'
+      ? ['Open Date','Expiry','Strike','Premium ($)','Close Px ($)','Option P&L ($)','Option %','Days']
+      : ['Open Date','Expiry','Strike','Premium ($)','Close Px ($)','Option P&L ($)','Option %','Equity P&L ($)','Equity %','Total P&L ($)','Total %','Days'];
+    const rows = activeLog.map((t: any) => {
+      const premUsd  = Number(t.premium_usd ?? t.premium * 100);
+      const closePx  = Number(t.close_price) * 100;
+      const spyBase  = t.spy_entry ? t.spy_entry * 100 : null;
+      const optPct   = premUsd > 0 ? `${(Number(t.option_pnl) / premUsd * 100).toFixed(1)}%` : '';
+      const sharePct = spyBase && t.share_pnl != null ? `${(Number(t.share_pnl) / spyBase * 100).toFixed(1)}%` : '';
+      const totalPct = spyBase && t.total_pnl != null ? `${(Number(t.total_pnl) / spyBase * 100).toFixed(1)}%` : '';
+      if (strategy === 'csp') {
+        return [t.open_date, t.expiry, Number(t.strike).toFixed(2), premUsd.toFixed(2), closePx.toFixed(2), Number(t.option_pnl).toFixed(2), optPct, t.days_held];
+      }
+      return [
+        t.open_date, t.expiry, Number(t.strike).toFixed(2), premUsd.toFixed(2),
+        closePx.toFixed(2),
+        Number(t.option_pnl).toFixed(2), optPct,
+        t.share_pnl != null ? Number(t.share_pnl).toFixed(2) : '', sharePct,
+        t.total_pnl != null ? Number(t.total_pnl).toFixed(2) : '', totalPct,
+        t.days_held,
+      ];
+    });
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trade_log_${ticker}_${activeScenario}_${startDate}_${endDate}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleSimulate = async () => {
     setIsSimulating(true);
@@ -223,7 +318,7 @@ export default function OverlayPage() {
       const res = await fetch('/api/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: ticker, delta, dte, start: startDate, end: endDate }),
+        body: JSON.stringify({ symbol: ticker, delta, dte, start: startDate, end: endDate, strategy }),
       });
       if (!res.ok) {
         posthog?.capture('api_error', { endpoint: '/api/simulate', status_code: res.status });
@@ -276,7 +371,7 @@ export default function OverlayPage() {
       const res = await fetch('/api/grid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: ticker, start: startDate, end: endDate }),
+        body: JSON.stringify({ symbol: ticker, start: startDate, end: endDate, strategy }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -302,12 +397,15 @@ export default function OverlayPage() {
             scenario:     sLabel,
             trades:       s.num_trades ?? 0,
             winRate:      s.win_rate ?? 0,
-            totalPnl:     s.total_pnl ?? 0,
-            avgPerTrade:  s.avg_pnl ?? 0,
-            avgCredit:    s.avg_premium ?? 0,
-            maxDrawdown:  dd,   // % e.g. 5.2
-            efficiency:   dd > 0 ? parseFloat((tr / dd).toFixed(2)) : null,
-            yearlyPnl:    s.yearly_pnl ?? {},
+            totalPnl:        s.total_pnl ?? 0,
+            totalOptionPnl:  s.total_option_pnl ?? null,
+            totalSharePnl:   s.total_share_pnl ?? null,
+            totalCombinedPnl: s.total_combined_pnl ?? null,
+            avgPerTrade:     s.avg_pnl ?? 0,
+            avgCredit:       s.avg_premium ?? 0,
+            maxDrawdown:     dd,
+            efficiency:      dd > 0 ? parseFloat((tr / dd).toFixed(2)) : null,
+            yearlyPnl:       s.yearly_pnl ?? {},
           });
         }
       }
@@ -320,9 +418,16 @@ export default function OverlayPage() {
     }
   };
 
-  const activeStats = statsData[activeScenario] ?? {};
-  const activeRisk  = riskTable.find(r => r.key === activeScenario) ?? {};
-  const simLog    = tradeLog[activeScenario];
+  // When a grid combo is selected, use its simulation results for chart/stats/tradelog
+  const hasCombo      = comboChartData.length > 0;
+  const displayChart  = hasCombo ? comboChartData  : chartData;
+  const displayStats  = hasCombo ? comboStatsData  : statsData;
+  const displayLog    = hasCombo ? comboTradeLog   : tradeLog;
+  const displayRisk   = hasCombo ? comboRiskTable  : riskTable;
+
+  const activeStats = displayStats[activeScenario] ?? {};
+  const activeRisk  = displayRisk.find((r: any) => r.key === activeScenario) ?? {};
+  const simLog    = displayLog[activeScenario];
   const activeLog = (Array.isArray(simLog) && simLog.length > 0)
     ? simLog
     : MOCK_TRADE_LOG[activeScenario];
@@ -336,8 +441,10 @@ export default function OverlayPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight text-white">Covered Call Overlay</h1>
-        <p className="text-[var(--color-text-muted)] mt-1">Simulate systematic call selling on your portfolio</p>
+        <h1 className="text-3xl font-bold tracking-tight text-white">Options Overlay</h1>
+        <p className="text-[var(--color-text-muted)] mt-1">
+          {strategy === 'cc' ? 'Simulate systematic covered call selling on your portfolio' : 'Simulate systematic cash-secured put selling'}
+        </p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -432,6 +539,27 @@ export default function OverlayPage() {
             </div>
           </div>
 
+          {/* Strategy selector */}
+          <div>
+            <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider block mb-2">Strategy</label>
+            <div className="flex space-x-2">
+              <button onClick={() => { setStrategy('cc'); setHasSimulated(false); setChartData([]); setGridData([]); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  strategy === 'cc'
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)]'
+                }`}
+              >Covered Call</button>
+              <button onClick={() => { setStrategy('csp'); setHasSimulated(false); setChartData([]); setGridData([]); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  strategy === 'csp'
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)]'
+                }`}
+              >Cash-Secured Put</button>
+            </div>
+          </div>
+
           <button onClick={handleSimulate} disabled={isSimulating}
             className={`w-full flex items-center justify-center space-x-2 py-3 rounded-xl font-medium transition-all ${
               isSimulating
@@ -507,18 +635,16 @@ export default function OverlayPage() {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-3 justify-between items-center mb-6">
-                  <h2 className="text-xl font-semibold text-white">Performance Comparison</h2>
                   <div className="flex items-center gap-3">
-                    <div className="flex rounded-lg border border-[var(--color-border)] overflow-hidden text-xs font-medium">
-                      <button onClick={() => setViewMode('pct')}
-                        className={`px-3 py-1.5 transition-colors ${viewMode === 'pct' ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-muted)] hover:text-white'}`}>
-                        Returns %
-                      </button>
-                      <button onClick={() => setViewMode('dollar')}
-                        className={`px-3 py-1.5 transition-colors ${viewMode === 'dollar' ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-muted)] hover:text-white'}`}>
-                        Growth of $10k
-                      </button>
-                    </div>
+                    <h2 className="text-xl font-semibold text-white">Performance Comparison</h2>
+                    {hasCombo && (
+                      <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
+                        {gridSelectedRow?.combo} · {gridSelectedRow?.scenario}
+                      </span>
+                    )}
+                    {isLoadingCombo && <div className="w-4 h-4 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />}
+                  </div>
+                  <div className="flex items-center gap-3">
                     <button onClick={() => setShowPortfolio(!showPortfolio)}
                       className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                         showPortfolio
@@ -544,27 +670,31 @@ export default function OverlayPage() {
                 <div className="h-[280px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
-                      data={chartData.map(d => {
-                        const portRaw = portfolioLine[d.month];
-                        return {
-                          ...d,
-                          exit25:    viewMode === 'pct' ? parseFloat((d.exit25  - 100).toFixed(2)) : parseFloat((d.exit25  * 100).toFixed(2)),
-                          exit50:    viewMode === 'pct' ? parseFloat((d.exit50  - 100).toFixed(2)) : parseFloat((d.exit50  * 100).toFixed(2)),
-                          exitExp:   viewMode === 'pct' ? parseFloat((d.exitExp - 100).toFixed(2)) : parseFloat((d.exitExp * 100).toFixed(2)),
-                          portfolio: portRaw !== undefined
-                            ? (viewMode === 'pct' ? parseFloat((portRaw - 100).toFixed(2)) : parseFloat((portRaw * 100).toFixed(2)))
-                            : undefined,
-                        };
-                      })}
+                      data={(() => {
+                        const portBase = displayChart.length > 0 ? portfolioLine[displayChart[0].month] : undefined;
+                        return displayChart.map(d => {
+                          const portRaw = portfolioLine[d.month];
+                          const portNorm = portRaw !== undefined && portBase
+                            ? parseFloat(((portRaw / portBase - 1) * 100).toFixed(2))
+                            : undefined;
+                          return {
+                            ...d,
+                            exit25:    parseFloat((d.exit25  - 100).toFixed(2)),
+                            exit50:    parseFloat((d.exit50  - 100).toFixed(2)),
+                            exitExp:   parseFloat((d.exitExp - 100).toFixed(2)),
+                            portfolio: portNorm,
+                          };
+                        });
+                      })()}
                       margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="month" ticks={getAxisTicks(chartData)} stroke="#94A3B8" tick={{ fill: '#94A3B8', fontSize: 11, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} tickFormatter={fmtAxisDate} />
+                      <XAxis dataKey="month" ticks={getAxisTicks(displayChart)} stroke="#94A3B8" tick={{ fill: '#94A3B8', fontSize: 11, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} tickFormatter={fmtAxisDate} />
                       <YAxis stroke="#94A3B8" tick={{ fill: '#94A3B8', fontSize: 11, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false}
-                        tickFormatter={v => viewMode === 'pct' ? `${v >= 0 ? '+' : ''}${v.toFixed(0)}%` : `$${(v/1000).toFixed(1)}k`}
+                        tickFormatter={v => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`}
                         domain={['dataMin - 2', 'dataMax + 2']} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1E293B', borderColor: '#334155', color: '#F8FAFC', borderRadius: '8px', fontFamily: 'var(--font-mono)' }}
-                        formatter={(value: any) => [viewMode === 'pct' ? `${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(2)}%` : `$${Number(value).toLocaleString()}`, undefined]}
+                        formatter={(value: any) => [`${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(2)}%`, undefined]}
                         labelFormatter={(val: any) => fmtAxisDate(String(val))}
                       />
                       {showPortfolio && (
@@ -576,6 +706,16 @@ export default function OverlayPage() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
+
+                {/* P&L breakdown bar */}
+                {hasSimulated && (activeStats.total_option_pnl != null || activeStats.total_share_pnl != null) && (
+                  <div className="mt-4 pt-4 border-t border-[var(--color-border)] flex flex-wrap items-center gap-6 font-mono text-sm">
+                    <span className="text-[var(--color-text-muted)] text-xs uppercase tracking-wider font-semibold">P&L Breakdown</span>
+                    <span className="text-[var(--color-text-muted)]">Option P&L: <span className={activeStats.total_option_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_option_pnl >= 0 ? '+' : ''}${Number(activeStats.total_option_pnl).toLocaleString()}</span></span>
+                    <span className="text-[var(--color-text-muted)]">Equity P&L: <span className={activeStats.total_share_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_share_pnl >= 0 ? '+' : ''}${Number(activeStats.total_share_pnl).toLocaleString()}</span></span>
+                    <span className="text-[var(--color-text-muted)]">Total: <span className={activeStats.total_combined_pnl >= 0 ? 'text-[var(--color-success)] font-bold text-base' : 'text-[var(--color-danger)] font-bold text-base'}>{activeStats.total_combined_pnl >= 0 ? '+' : ''}${Number(activeStats.total_combined_pnl).toLocaleString()}</span></span>
+                  </div>
+                )}
               </div>
 
               {/* Strategy Grid — inline in Summary */}
@@ -586,8 +726,22 @@ export default function OverlayPage() {
                   { key: 'exitExp', label: 'S3 — Hold to Expiry', shortLabel: 'Hold to Expiry' },
                 ];
                 const activeGridScenario = gridFilterScenario === 'all' ? 'exit50' : gridFilterScenario;
-                const visibleRows = gridData.filter(r => r.scenarioKey === activeGridScenario);
+                const visibleRows = [...gridData.filter(r => r.scenarioKey === activeGridScenario)].sort((a, b) => {
+                  const av = a[gridSortKey] ?? 0;
+                  const bv = b[gridSortKey] ?? 0;
+                  return gridSortDir === 'asc' ? av - bv : bv - av;
+                });
                 const best = visibleRows.length ? visibleRows.reduce((a, b) => b.totalPnl > a.totalPnl ? b : a) : null;
+                const GRID_COLS: { label: string; key: string }[] = [
+                  { label: 'Combo',         key: 'combo' },
+                  { label: 'Trades',        key: 'trades' },
+                  { label: 'Win %',         key: 'winRate' },
+                  { label: 'Total P&L',     key: 'totalPnl' },
+                  { label: 'Avg/Trade',     key: 'avgPerTrade' },
+                  { label: 'Avg Credit',    key: 'avgCredit' },
+                  { label: 'Max Drawdown',  key: 'maxDrawdown' },
+                  { label: 'Efficiency',    key: 'efficiency' },
+                ];
                 return (
                   <div className="space-y-5">
 
@@ -660,8 +814,19 @@ export default function OverlayPage() {
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="border-b border-[var(--color-border)] bg-[#1a2535]">
-                                  {['Combo','Trades','Win %','Total P&L','Avg/Trade','Avg Credit','Max Drawdown','Efficiency'].map(h => (
-                                    <th key={h} className="text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider px-4 py-3">{h}</th>
+                                  {GRID_COLS.map(col => (
+                                    <th key={col.key}
+                                      onClick={() => handleGridSort(col.key)}
+                                      className="text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider px-4 py-3 cursor-pointer select-none hover:text-white transition-colors"
+                                    >
+                                      <span className="flex items-center gap-1">
+                                        {col.label}
+                                        {gridSortKey === col.key
+                                          ? <span className="text-[var(--color-primary)]">{gridSortDir === 'desc' ? '↓' : '↑'}</span>
+                                          : <span className="opacity-30">↕</span>
+                                        }
+                                      </span>
+                                    </th>
                                   ))}
                                 </tr>
                               </thead>
@@ -672,7 +837,7 @@ export default function OverlayPage() {
                                   return (
                                     <tr
                                       key={i}
-                                      onClick={() => setGridSelectedRow(isSelected ? null : r)}
+                                      onClick={() => handleGridRowClick(r)}
                                       className={`cursor-pointer transition-colors ${
                                         isSelected
                                           ? 'bg-[var(--color-primary)]/10'
@@ -749,6 +914,14 @@ export default function OverlayPage() {
                                   </div>
                                 ))}
                               </div>
+                              {(r.totalOptionPnl != null || r.totalSharePnl != null) && (
+                                <div className="flex flex-wrap items-center gap-6 font-mono text-sm pt-2 border-t border-[var(--color-border)]">
+                                  <span className="text-[var(--color-text-muted)] text-xs uppercase tracking-wider font-semibold">P&L Breakdown</span>
+                                  <span className="text-[var(--color-text-muted)]">Option P&L: <span className={r.totalOptionPnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{r.totalOptionPnl >= 0 ? '+' : ''}${Number(r.totalOptionPnl).toLocaleString()}</span></span>
+                                  <span className="text-[var(--color-text-muted)]">Equity P&L: <span className={r.totalSharePnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{r.totalSharePnl >= 0 ? '+' : ''}${Number(r.totalSharePnl).toLocaleString()}</span></span>
+                                  <span className="text-[var(--color-text-muted)]">Total: <span className={r.totalCombinedPnl >= 0 ? 'text-[var(--color-success)] font-bold text-base' : 'text-[var(--color-danger)] font-bold text-base'}>{r.totalCombinedPnl >= 0 ? '+' : ''}${Number(r.totalCombinedPnl).toLocaleString()}</span></span>
+                                </div>
+                              )}
                               {annualData.length > 0 && (
                                 <div>
                                   <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Annual P&amp;L</p>
@@ -860,7 +1033,7 @@ export default function OverlayPage() {
                         <span className="text-[var(--color-text-muted)]">Winners: <span className="text-[var(--color-success)] font-bold">{activeLog.filter((t: any) => t.pnl >= 0).length}</span></span>
                         <span className="text-[var(--color-text-muted)]">Losers: <span className="text-[var(--color-danger)] font-bold">{activeLog.filter((t: any) => t.pnl < 0).length}</span></span>
                         <span className="text-[var(--color-text-muted)]">Option P&amp;L: <span className={`font-bold ${totalOpt >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>{totalOpt >= 0 ? '+' : ''}${totalOpt.toFixed(0)}</span></span>
-                        {hasShare && <span className="text-[var(--color-text-muted)]">Share P&amp;L: <span className={`font-bold ${totalShare >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>{totalShare >= 0 ? '+' : ''}${totalShare.toFixed(0)}</span></span>}
+                        {hasShare && <span className="text-[var(--color-text-muted)]">Equity P&amp;L: <span className={`font-bold ${totalShare >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>{totalShare >= 0 ? '+' : ''}${totalShare.toFixed(0)}</span></span>}
                         {hasShare && <span className="text-[var(--color-text-muted)]">Total: <span className={`font-bold ${totalComb >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>{totalComb >= 0 ? '+' : ''}${totalComb.toFixed(0)}</span></span>}
                       </div>
                     );
@@ -869,7 +1042,7 @@ export default function OverlayPage() {
                   {/* Legend */}
                   <div className="flex items-center gap-4 mb-3 text-xs text-[var(--color-text-muted)]">
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#10B981',opacity:0.9}} /> Option P&L (solid)</span>
-                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#10B981',opacity:0.45}} /> Share P&L (faded)</span>
+                    <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#10B981',opacity:0.45}} /> Equity P&L (faded)</span>
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#EF4444',opacity:0.9}} /> Loss</span>
                   </div>
 
@@ -908,8 +1081,8 @@ export default function OverlayPage() {
                             <Cell key={i} fill={entry.option_pnl >= 0 ? '#10B981' : '#EF4444'} fillOpacity={0.9} />
                           ))}
                         </Bar>
-                        {/* Share P&L bar */}
-                        <Bar dataKey="share_pnl" name="Share P&L" radius={[0, 3, 3, 0]}>
+                        {/* Equity P&L bar */}
+                        <Bar dataKey="share_pnl" name="Equity P&L" radius={[0, 3, 3, 0]}>
                           {activeLog.map((entry: any, i: number) => (
                             <Cell key={i} fill={entry.share_pnl >= 0 ? '#10B981' : '#EF4444'} fillOpacity={0.45} />
                           ))}
@@ -925,20 +1098,27 @@ export default function OverlayPage() {
           {/* ── Logs tab — full trade table ── */}
           {activeResultTab === 'logs' && (
             <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-6 shadow-sm relative overflow-hidden">
-              <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
                 <div>
                   <h2 className="text-xl font-semibold text-white">Trade Log</h2>
                   <p className="text-xs text-[var(--color-text-muted)] mt-0.5">All trades for selected scenario</p>
                 </div>
-                <div className="flex space-x-1">
-                  {SCENARIOS.map(s => (
-                    <button key={s.key} onClick={() => setActiveScenario(s.key as ScenarioKey)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        activeScenario === s.key ? 'text-white' : 'text-[var(--color-text-muted)] hover:text-white'
-                      }`}
-                      style={activeScenario === s.key ? { backgroundColor: s.color } : {}}
-                    >{s.shortLabel}</button>
-                  ))}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex space-x-1">
+                    {SCENARIOS.map(s => (
+                      <button key={s.key} onClick={() => setActiveScenario(s.key as ScenarioKey)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          activeScenario === s.key ? 'text-white' : 'text-[var(--color-text-muted)] hover:text-white'
+                        }`}
+                        style={activeScenario === s.key ? { backgroundColor: s.color } : {}}
+                      >{s.shortLabel}</button>
+                    ))}
+                  </div>
+                  <button onClick={downloadLogCSV}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-white hover:border-white transition-colors"
+                  >
+                    ↓ CSV
+                  </button>
                 </div>
               </div>
 
@@ -951,13 +1131,50 @@ export default function OverlayPage() {
                   <table className="w-full text-sm font-mono">
                     <thead>
                       <tr className="border-b border-[var(--color-border)]">
-                        {['Open Date', 'Expiry', 'Strike', 'Premium', 'Close Px', 'Option P&L', 'Option %', 'Share P&L', 'Share %', 'Total P&L', 'Total %', 'Days'].map(h => (
-                          <th key={h} className="text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider pb-3 pr-4">{h}</th>
+                        {([
+                          { label: 'Open Date',  key: 'open_date'   },
+                          { label: 'Expiry',     key: 'expiry'      },
+                          { label: 'Strike',     key: 'strike'      },
+                          { label: 'Premium',    key: 'premium_usd' },
+                          { label: 'Close Px',   key: 'close_price' },
+                          { label: 'Option P&L', key: 'option_pnl'  },
+                          { label: 'Option %',   key: '_optPct'     },
+                          { label: 'Equity P&L', key: 'share_pnl'   },
+                          { label: 'Equity %',   key: '_sharePct'   },
+                          { label: 'Total P&L',  key: 'total_pnl'   },
+                          { label: 'Total %',    key: '_totalPct'   },
+                          { label: 'Days',       key: 'days_held'   },
+                        ] as {label:string;key:string}[]).map(col => (
+                          <th key={col.key} onClick={() => handleLogSort(col.key)}
+                            className="text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider pb-3 pr-4 cursor-pointer select-none hover:text-white transition-colors">
+                            <span className="flex items-center gap-1">
+                              {col.label}
+                              {logSortKey === col.key
+                                ? <span className="text-[var(--color-primary)]">{logSortDir === 'desc' ? '↓' : '↑'}</span>
+                                : <span className="opacity-20">↕</span>}
+                            </span>
+                          </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--color-border)]">
-                      {activeLog.map((t: any, i: number) => {
+                      {[...activeLog].sort((a: any, b: any) => {
+                        const premA = Number(a.premium_usd ?? a.premium * 100);
+                        const premB = Number(b.premium_usd ?? b.premium * 100);
+                        const spyA  = a.spy_entry ? a.spy_entry * 100 : null;
+                        const spyB  = b.spy_entry ? b.spy_entry * 100 : null;
+                        const getVal = (t: any, prem: number, spyBase: number | null, key: string): any => {
+                          if (key === '_optPct')   return prem > 0 ? Number(t.option_pnl) / prem : 0;
+                          if (key === '_sharePct')  return spyBase && t.share_pnl != null ? Number(t.share_pnl) / spyBase : 0;
+                          if (key === '_totalPct')  return spyBase && t.total_pnl != null ? Number(t.total_pnl) / spyBase : 0;
+                          const v = t[key];
+                          return typeof v === 'string' ? v : Number(v ?? 0);
+                        };
+                        const av = getVal(a, premA, spyA, logSortKey);
+                        const bv = getVal(b, premB, spyB, logSortKey);
+                        if (typeof av === 'string') return logSortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+                        return logSortDir === 'asc' ? av - bv : bv - av;
+                      }).map((t: any, i: number) => {
                         const premUsd   = Number(t.premium_usd ?? t.premium * 100);
                         const spyBase   = t.spy_entry ? t.spy_entry * 100 : null;
                         const optPct    = premUsd > 0 ? (Number(t.option_pnl) / premUsd * 100) : null;
