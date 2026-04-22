@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useRef } from 'react';
 import Image from 'next/image';
-import { UserButton } from '@clerk/nextjs';
+import { UserButton, SignedIn } from '@clerk/nextjs';
 import {
   Briefcase,
   LineChart,
