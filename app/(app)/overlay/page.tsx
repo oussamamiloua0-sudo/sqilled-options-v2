@@ -51,9 +51,10 @@ const SCENARIOS = [
   { key: 'exit25',  label: 'Close at 25%',   color: '#6366F1', shortLabel: '25%'    },
   { key: 'exit50',  label: 'Close at 50%',   color: '#F59E0B', shortLabel: '50%'    },
   { key: 'exitExp', label: 'Hold to Expiry', color: '#10B981', shortLabel: 'Expiry' },
+  { key: 'roll15',  label: 'Roll at 15 DTE', color: '#EC4899', shortLabel: 'Roll15' },
 ] as const;
 
-type ScenarioKey = 'exit25' | 'exit50' | 'exitExp';
+type ScenarioKey = 'exit25' | 'exit50' | 'exitExp' | 'roll15';
 const TICKERS = ['SPY', 'QQQ', 'IWM'] as const;
 
 // Mock trade log — deterministic (no Math.random) to avoid SSR hydration mismatch
@@ -61,7 +62,7 @@ function buildMockTrades(scenario: ScenarioKey) {
   const months   = ['2023-01','2023-02','2023-03','2023-04','2023-05','2023-06','2023-07','2023-08','2023-09','2023-10','2023-11','2023-12','2024-01','2024-02','2024-03','2024-04','2024-05','2024-06'];
   const strikes  = [405,408,411,415,418,421,424,427,430,433,437,440,445,449,453,458,462,466];
   const premiums = [1.85,1.92,2.10,2.34,1.76,2.55,2.20,1.98,2.40,1.65,2.80,2.15,2.50,2.30,2.70,2.10,2.45,2.60];
-  const daysMap  = { exit25: [9,10,11,9,12,10,8,11,13,9,10,12,11,9,10,13,11,10], exit50: [18,20,22,19,24,21,17,22,25,18,21,24,22,18,20,26,22,20], exitExp: [30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35] };
+  const daysMap  = { exit25: [9,10,11,9,12,10,8,11,13,9,10,12,11,9,10,13,11,10], exit50: [18,20,22,19,24,21,17,22,25,18,21,24,22,18,20,26,22,20], exitExp: [30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35], roll15: [15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15] };
   // exitExp: assign losses at indices 4,10,16 (every ~6 trades)
   const lossSet = new Set([4,10,16]);
   return months.map((m, i) => {
@@ -88,6 +89,7 @@ const MOCK_TRADE_LOG: Record<ScenarioKey, any[]> = {
   exit25:  buildMockTrades('exit25'),
   exit50:  buildMockTrades('exit50'),
   exitExp: buildMockTrades('exitExp'),
+  roll15:  buildMockTrades('exitExp'),
 };
 type Ticker = typeof TICKERS[number];
 
@@ -244,9 +246,9 @@ export default function OverlayPage() {
       });
       if (!res.ok) return;
       const data = await res.json();
-      const { dates, exit25, exit50, exitExp } = data.curves;
+      const { dates, exit25, exit50, exitExp, roll15 } = data.curves;
       setComboChartData(dates.map((d: string, i: number) => ({
-        month: d.slice(0, 7), exit25: exit25[i], exit50: exit50[i], exitExp: exitExp[i],
+        month: d.slice(0, 7), exit25: exit25[i], exit50: exit50[i], exitExp: exitExp[i], roll15: roll15?.[i] ?? null,
       })));
       setComboStatsData(data.stats ?? {});
       setComboTradeLog(data.trade_log ?? {});
@@ -328,12 +330,13 @@ export default function OverlayPage() {
       const data = await res.json();
 
       // Build chart data — zip dates + values
-      const { dates, exit25, exit50, exitExp } = data.curves;
+      const { dates, exit25, exit50, exitExp, roll15 } = data.curves;
       const chart = dates.map((d: string, i: number) => ({
         month: d.slice(0, 7),
         exit25:  exit25[i],
         exit50:  exit50[i],
         exitExp: exitExp[i],
+        roll15:  roll15?.[i] ?? null,
       }));
       setChartData(chart);
       setRiskTable(data.risk_table);
@@ -380,7 +383,7 @@ export default function OverlayPage() {
       const data = await res.json();
       // Flatten grid × scenarios into rows
       const SCENARIO_LABELS: Record<string, string> = {
-        exit25: '25% Profit', exit50: '50% Profit', exitExp: 'Hold to Expiry',
+        exit25: '25% Profit', exit50: '50% Profit', exitExp: 'Hold to Expiry', roll15: 'Roll at 15 DTE',
       };
       const rows: any[] = [];
       for (const cell of data.grid ?? []) {
@@ -724,6 +727,7 @@ export default function OverlayPage() {
                   { key: 'exit25',  label: 'S1 — 25% Profit',    shortLabel: '25% Profit'    },
                   { key: 'exit50',  label: 'S2 — 50% Profit',    shortLabel: '50% Profit'    },
                   { key: 'exitExp', label: 'S3 — Hold to Expiry', shortLabel: 'Hold to Expiry' },
+                  { key: 'roll15',  label: 'S4 — Roll at 15 DTE', shortLabel: 'Roll 15 DTE'   },
                 ];
                 const activeGridScenario = gridFilterScenario === 'all' ? 'exit50' : gridFilterScenario;
                 const visibleRows = [...gridData.filter(r => r.scenarioKey === activeGridScenario)].sort((a, b) => {
