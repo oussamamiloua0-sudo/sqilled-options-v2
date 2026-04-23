@@ -1,8 +1,9 @@
-import type {Metadata} from 'next';
+import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import { Sidebar } from '@/components/Sidebar';
-import { Providers } from '@/components/Providers';
+import { ClerkProvider } from '@clerk/nextjs';
+import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -17,24 +18,25 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: 'sqilled Options',
   description: 'Options analytics tool for portfolio performance and covered call overlay simulation.',
+  icons: {
+    icon: [
+      { url: '/logo.png', sizes: '32x32', type: 'image/png' },
+      { url: '/logo.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: { url: '/logo.png', sizes: '180x180', type: 'image/png' },
+  },
 };
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
-      <body className="font-sans antialiased bg-[var(--color-background)] text-[var(--color-text-main)] overflow-hidden h-screen flex flex-col md:flex-row">
-        <Providers>
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto flex flex-col">
-            <div className="flex-1 p-8">
-              {children}
-            </div>
-            <footer className="py-4 text-center text-xs text-[var(--color-text-muted)] border-t border-[var(--color-border)]">
-              For educational purposes only. Not financial advice.
-            </footer>
-          </main>
-        </Providers>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} dark`}>
+        <body suppressHydrationWarning className="font-sans antialiased bg-[var(--color-background)] text-[var(--color-text-main)]">
+          {children}
+          <Analytics />
+          <SpeedInsights />
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
