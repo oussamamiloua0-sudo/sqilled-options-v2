@@ -711,14 +711,18 @@ export default function OverlayPage() {
                 </div>
 
                 {/* P&L breakdown bar */}
-                {hasSimulated && (activeStats.total_option_pnl != null || activeStats.total_share_pnl != null) && (
-                  <div className="mt-4 pt-4 border-t border-[var(--color-border)] flex flex-wrap items-center gap-6 font-mono text-sm">
-                    <span className="text-[var(--color-text-muted)] text-xs uppercase tracking-wider font-semibold">P&L Breakdown</span>
-                    <span className="text-[var(--color-text-muted)]">Option P&L: <span className={activeStats.total_option_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_option_pnl >= 0 ? '+' : ''}${Number(activeStats.total_option_pnl).toLocaleString()}</span></span>
-                    <span className="text-[var(--color-text-muted)]">Equity P&L: <span className={activeStats.total_share_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_share_pnl >= 0 ? '+' : ''}${Number(activeStats.total_share_pnl).toLocaleString()}</span></span>
-                    <span className="text-[var(--color-text-muted)]">Total: <span className={activeStats.total_combined_pnl >= 0 ? 'text-[var(--color-success)] font-bold text-base' : 'text-[var(--color-danger)] font-bold text-base'}>{activeStats.total_combined_pnl >= 0 ? '+' : ''}${Number(activeStats.total_combined_pnl).toLocaleString()}</span></span>
-                  </div>
-                )}
+                {hasSimulated && activeStats.total_option_pnl != null && (() => {
+                  const hasEquity = activeStats.total_share_pnl != null;
+                  const totalVal  = activeStats.total_combined_pnl ?? activeStats.total_option_pnl;
+                  return (
+                    <div className="mt-4 pt-4 border-t border-[var(--color-border)] flex flex-wrap items-center gap-6 font-mono text-sm">
+                      <span className="text-[var(--color-text-muted)] text-xs uppercase tracking-wider font-semibold">P&L Breakdown</span>
+                      <span className="text-[var(--color-text-muted)]">Option P&L: <span className={activeStats.total_option_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_option_pnl >= 0 ? '+' : ''}${Number(activeStats.total_option_pnl).toLocaleString()}</span></span>
+                      {hasEquity && <span className="text-[var(--color-text-muted)]">Equity P&L: <span className={activeStats.total_share_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_share_pnl >= 0 ? '+' : ''}${Number(activeStats.total_share_pnl).toLocaleString()}</span></span>}
+                      <span className="text-[var(--color-text-muted)]">Total: <span className={totalVal >= 0 ? 'text-[var(--color-success)] font-bold text-base' : 'text-[var(--color-danger)] font-bold text-base'}>{totalVal >= 0 ? '+' : ''}${Number(totalVal).toLocaleString()}</span></span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Strategy Grid — inline in Summary */}
