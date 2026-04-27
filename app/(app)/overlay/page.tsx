@@ -51,9 +51,10 @@ const SCENARIOS = [
   { key: 'exit25',  label: 'Close at 25%',   color: '#6366F1', shortLabel: '25%'    },
   { key: 'exit50',  label: 'Close at 50%',   color: '#F59E0B', shortLabel: '50%'    },
   { key: 'exitExp', label: 'Hold to Expiry', color: '#10B981', shortLabel: 'Expiry' },
+  { key: 'roll15',  label: 'Roll at 15 DTE', color: '#EC4899', shortLabel: 'Roll15' },
 ] as const;
 
-type ScenarioKey = 'exit25' | 'exit50' | 'exitExp';
+type ScenarioKey = 'exit25' | 'exit50' | 'exitExp' | 'roll15';
 const TICKERS = ['SPY', 'QQQ', 'IWM'] as const;
 
 // Mock trade log — deterministic (no Math.random) to avoid SSR hydration mismatch
@@ -61,7 +62,7 @@ function buildMockTrades(scenario: ScenarioKey) {
   const months   = ['2023-01','2023-02','2023-03','2023-04','2023-05','2023-06','2023-07','2023-08','2023-09','2023-10','2023-11','2023-12','2024-01','2024-02','2024-03','2024-04','2024-05','2024-06'];
   const strikes  = [405,408,411,415,418,421,424,427,430,433,437,440,445,449,453,458,462,466];
   const premiums = [1.85,1.92,2.10,2.34,1.76,2.55,2.20,1.98,2.40,1.65,2.80,2.15,2.50,2.30,2.70,2.10,2.45,2.60];
-  const daysMap  = { exit25: [9,10,11,9,12,10,8,11,13,9,10,12,11,9,10,13,11,10], exit50: [18,20,22,19,24,21,17,22,25,18,21,24,22,18,20,26,22,20], exitExp: [30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35] };
+  const daysMap  = { exit25: [9,10,11,9,12,10,8,11,13,9,10,12,11,9,10,13,11,10], exit50: [18,20,22,19,24,21,17,22,25,18,21,24,22,18,20,26,22,20], exitExp: [30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35], roll15: [15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15] };
   // exitExp: assign losses at indices 4,10,16 (every ~6 trades)
   const lossSet = new Set([4,10,16]);
   return months.map((m, i) => {
@@ -88,6 +89,7 @@ const MOCK_TRADE_LOG: Record<ScenarioKey, any[]> = {
   exit25:  buildMockTrades('exit25'),
   exit50:  buildMockTrades('exit50'),
   exitExp: buildMockTrades('exitExp'),
+  roll15:  buildMockTrades('exitExp'),
 };
 type Ticker = typeof TICKERS[number];
 
@@ -164,7 +166,7 @@ export default function OverlayPage() {
   const [delta, setDelta]           = useState(0.25);
   const [dte, setDte]               = useState<30 | 45 | 60>(45);
   const [startDate, setStartDate]   = useState('2023-01-01');
-  const [endDate, setEndDate]       = useState('2024-06-30');
+  const [endDate, setEndDate]       = useState(() => new Date().toISOString().slice(0, 10));
   const [showScenarios, setShowScenarios] = useState(true);
   const [viewMode, setViewMode]     = useState<ViewMode>('pct');
   const [datePreset, setDatePreset] = useState<Preset>('custom');
@@ -197,6 +199,13 @@ export default function OverlayPage() {
   const [gridSortDir, setGridSortDir]               = useState<'asc' | 'desc'>('desc');
   const [logSortKey, setLogSortKey]                 = useState<string>('open_date');
   const [logSortDir, setLogSortDir]                 = useState<'asc' | 'desc'>('asc');
+  const [strategy, setStrategy]                     = useState<'cc' | 'csp'>('cc');
+
+  const [comboChartData, setComboChartData]   = useState<any[]>([]);
+  const [comboStatsData, setComboStatsData]   = useState<Record<string, any>>({});
+  const [comboTradeLog, setComboTradeLog]     = useState<Partial<Record<ScenarioKey, any[]>>>({});
+  const [comboRiskTable, setComboRiskTable]   = useState<any[]>([]);
+  const [isLoadingCombo, setIsLoadingCombo]   = useState(false);
 
   const handleGridSort = (key: string) => {
     if (gridSortKey === key) {
@@ -216,8 +225,41 @@ export default function OverlayPage() {
     }
   };
 
+  const handleGridRowClick = async (row: any) => {
+    if (gridSelectedRow?.combo === row.combo && gridSelectedRow?.scenarioKey === row.scenarioKey) {
+      setGridSelectedRow(null);
+      setComboChartData([]);
+      setComboStatsData({});
+      setComboTradeLog({});
+      setComboRiskTable([]);
+      return;
+    }
+    setGridSelectedRow(row);
+    setIsLoadingCombo(true);
+    try {
+      const res = await fetch('/api/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: ticker, delta: row.delta, dte: row.dte, start: startDate, end: endDate, strategy }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const { dates, exit25, exit50, exitExp, roll15 } = data.curves;
+      setComboChartData(dates.map((d: string, i: number) => ({
+        month: d.slice(0, 7), exit25: exit25[i], exit50: exit50[i], exitExp: exitExp[i], roll15: roll15?.[i] ?? null,
+      })));
+      setComboStatsData(data.stats ?? {});
+      setComboTradeLog(data.trade_log ?? {});
+      setComboRiskTable(data.risk_table ?? []);
+    } catch (_) {} finally {
+      setIsLoadingCombo(false);
+    }
+  };
+
   const downloadLogCSV = () => {
-    const headers = ['Open Date','Expiry','Strike','Premium ($)','Close Px ($)','Option P&L ($)','Option %','Equity P&L ($)','Equity %','Total P&L ($)','Total %','Days'];
+    const headers = strategy === 'csp'
+      ? ['Open Date','Expiry','Strike','Premium ($)','Close Px ($)','Option P&L ($)','Option %','Days']
+      : ['Open Date','Expiry','Strike','Premium ($)','Close Px ($)','Option P&L ($)','Option %','Equity P&L ($)','Equity %','Total P&L ($)','Total %','Days'];
     const rows = activeLog.map((t: any) => {
       const premUsd  = Number(t.premium_usd ?? t.premium * 100);
       const closePx  = Number(t.close_price) * 100;
@@ -225,6 +267,9 @@ export default function OverlayPage() {
       const optPct   = premUsd > 0 ? `${(Number(t.option_pnl) / premUsd * 100).toFixed(1)}%` : '';
       const sharePct = spyBase && t.share_pnl != null ? `${(Number(t.share_pnl) / spyBase * 100).toFixed(1)}%` : '';
       const totalPct = spyBase && t.total_pnl != null ? `${(Number(t.total_pnl) / spyBase * 100).toFixed(1)}%` : '';
+      if (strategy === 'csp') {
+        return [t.open_date, t.expiry, Number(t.strike).toFixed(2), premUsd.toFixed(2), closePx.toFixed(2), Number(t.option_pnl).toFixed(2), optPct, t.days_held];
+      }
       return [
         t.open_date, t.expiry, Number(t.strike).toFixed(2), premUsd.toFixed(2),
         closePx.toFixed(2),
@@ -273,7 +318,7 @@ export default function OverlayPage() {
       const res = await fetch('/api/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: ticker, delta, dte, start: startDate, end: endDate }),
+        body: JSON.stringify({ symbol: ticker, delta, dte, start: startDate, end: endDate, strategy }),
       });
       if (!res.ok) {
         posthog?.capture('api_error', { endpoint: '/api/simulate', status_code: res.status });
@@ -283,12 +328,13 @@ export default function OverlayPage() {
       const data = await res.json();
 
       // Build chart data — zip dates + values
-      const { dates, exit25, exit50, exitExp } = data.curves;
+      const { dates, exit25, exit50, exitExp, roll15 } = data.curves;
       const chart = dates.map((d: string, i: number) => ({
         month: d.slice(0, 7),
         exit25:  exit25[i],
         exit50:  exit50[i],
         exitExp: exitExp[i],
+        roll15:  roll15?.[i] ?? null,
       }));
       setChartData(chart);
       setRiskTable(data.risk_table);
@@ -326,7 +372,7 @@ export default function OverlayPage() {
       const res = await fetch('/api/grid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: ticker, start: startDate, end: endDate }),
+        body: JSON.stringify({ symbol: ticker, start: startDate, end: endDate, strategy }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -335,7 +381,7 @@ export default function OverlayPage() {
       const data = await res.json();
       // Flatten grid × scenarios into rows
       const SCENARIO_LABELS: Record<string, string> = {
-        exit25: '25% Profit', exit50: '50% Profit', exitExp: 'Hold to Expiry',
+        exit25: '25% Profit', exit50: '50% Profit', exitExp: 'Hold to Expiry', roll15: 'Roll at 15 DTE',
       };
       const rows: any[] = [];
       for (const cell of data.grid ?? []) {
@@ -373,9 +419,16 @@ export default function OverlayPage() {
     }
   };
 
-  const activeStats = statsData[activeScenario] ?? {};
-  const activeRisk  = riskTable.find(r => r.key === activeScenario) ?? {};
-  const simLog    = tradeLog[activeScenario];
+  // When a grid combo is selected, use its simulation results for chart/stats/tradelog
+  const hasCombo      = comboChartData.length > 0;
+  const displayChart  = hasCombo ? comboChartData  : chartData;
+  const displayStats  = hasCombo ? comboStatsData  : statsData;
+  const displayLog    = hasCombo ? comboTradeLog   : tradeLog;
+  const displayRisk   = hasCombo ? comboRiskTable  : riskTable;
+
+  const activeStats = displayStats[activeScenario] ?? {};
+  const activeRisk  = displayRisk.find((r: any) => r.key === activeScenario) ?? {};
+  const simLog    = displayLog[activeScenario];
   const activeLog = (Array.isArray(simLog) && simLog.length > 0)
     ? simLog
     : MOCK_TRADE_LOG[activeScenario];
@@ -389,8 +442,10 @@ export default function OverlayPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight text-white">Covered Call Overlay</h1>
-        <p className="text-[var(--color-text-muted)] mt-1">Simulate systematic call selling on your portfolio</p>
+        <h1 className="text-3xl font-bold tracking-tight text-white">Options Overlay</h1>
+        <p className="text-[var(--color-text-muted)] mt-1">
+          {strategy === 'cc' ? 'Simulate systematic covered call selling on your portfolio' : 'Simulate systematic cash-secured put selling'}
+        </p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -485,6 +540,27 @@ export default function OverlayPage() {
             </div>
           </div>
 
+          {/* Strategy selector */}
+          <div>
+            <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider block mb-2">Strategy</label>
+            <div className="flex space-x-2">
+              <button onClick={() => { setStrategy('cc'); setHasSimulated(false); setChartData([]); setGridData([]); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  strategy === 'cc'
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)]'
+                }`}
+              >Covered Call</button>
+              <button onClick={() => { setStrategy('csp'); setHasSimulated(false); setChartData([]); setGridData([]); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  strategy === 'csp'
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)]'
+                }`}
+              >Cash-Secured Put</button>
+            </div>
+          </div>
+
           <button onClick={handleSimulate} disabled={isSimulating}
             className={`w-full flex items-center justify-center space-x-2 py-3 rounded-xl font-medium transition-all ${
               isSimulating
@@ -560,7 +636,15 @@ export default function OverlayPage() {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-3 justify-between items-center mb-6">
-                  <h2 className="text-xl font-semibold text-white">Performance Comparison</h2>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-xl font-semibold text-white">Performance Comparison</h2>
+                    {hasCombo && (
+                      <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)] border border-[var(--color-primary)]/30">
+                        {gridSelectedRow?.combo} · {gridSelectedRow?.scenario}
+                      </span>
+                    )}
+                    {isLoadingCombo && <div className="w-4 h-4 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />}
+                  </div>
                   <div className="flex items-center gap-3">
                     <button onClick={() => setShowPortfolio(!showPortfolio)}
                       className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
@@ -588,9 +672,8 @@ export default function OverlayPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       data={(() => {
-                        // Normalize portfolio to same 0% baseline as scenarios
-                        const portBase = chartData.length > 0 ? portfolioLine[chartData[0].month] : undefined;
-                        return chartData.map(d => {
+                        const portBase = displayChart.length > 0 ? portfolioLine[displayChart[0].month] : undefined;
+                        return displayChart.map(d => {
                           const portRaw = portfolioLine[d.month];
                           const portNorm = portRaw !== undefined && portBase
                             ? parseFloat(((portRaw / portBase - 1) * 100).toFixed(2))
@@ -606,7 +689,7 @@ export default function OverlayPage() {
                       })()}
                       margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="month" ticks={getAxisTicks(chartData)} stroke="#94A3B8" tick={{ fill: '#94A3B8', fontSize: 11, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} tickFormatter={fmtAxisDate} />
+                      <XAxis dataKey="month" ticks={getAxisTicks(displayChart)} stroke="#94A3B8" tick={{ fill: '#94A3B8', fontSize: 11, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} tickFormatter={fmtAxisDate} />
                       <YAxis stroke="#94A3B8" tick={{ fill: '#94A3B8', fontSize: 11, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false}
                         tickFormatter={v => `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`}
                         domain={['dataMin - 2', 'dataMax + 2']} />
@@ -626,14 +709,18 @@ export default function OverlayPage() {
                 </div>
 
                 {/* P&L breakdown bar */}
-                {hasSimulated && (activeStats.total_option_pnl != null || activeStats.total_share_pnl != null) && (
-                  <div className="mt-4 pt-4 border-t border-[var(--color-border)] flex flex-wrap items-center gap-6 font-mono text-sm">
-                    <span className="text-[var(--color-text-muted)] text-xs uppercase tracking-wider font-semibold">P&L Breakdown</span>
-                    <span className="text-[var(--color-text-muted)]">Option P&L: <span className={activeStats.total_option_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_option_pnl >= 0 ? '+' : ''}${Number(activeStats.total_option_pnl).toLocaleString()}</span></span>
-                    <span className="text-[var(--color-text-muted)]">Equity P&L: <span className={activeStats.total_share_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_share_pnl >= 0 ? '+' : ''}${Number(activeStats.total_share_pnl).toLocaleString()}</span></span>
-                    <span className="text-[var(--color-text-muted)]">Total: <span className={activeStats.total_combined_pnl >= 0 ? 'text-[var(--color-success)] font-bold text-base' : 'text-[var(--color-danger)] font-bold text-base'}>{activeStats.total_combined_pnl >= 0 ? '+' : ''}${Number(activeStats.total_combined_pnl).toLocaleString()}</span></span>
-                  </div>
-                )}
+                {hasSimulated && activeStats.total_option_pnl != null && (() => {
+                  const hasEquity = activeStats.total_share_pnl != null;
+                  const totalVal  = activeStats.total_combined_pnl ?? activeStats.total_option_pnl;
+                  return (
+                    <div className="mt-4 pt-4 border-t border-[var(--color-border)] flex flex-wrap items-center gap-6 font-mono text-sm">
+                      <span className="text-[var(--color-text-muted)] text-xs uppercase tracking-wider font-semibold">P&L Breakdown</span>
+                      <span className="text-[var(--color-text-muted)]">Option P&L: <span className={activeStats.total_option_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_option_pnl >= 0 ? '+' : ''}${Number(activeStats.total_option_pnl).toLocaleString()}</span></span>
+                      {hasEquity && <span className="text-[var(--color-text-muted)]">Equity P&L: <span className={activeStats.total_share_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{activeStats.total_share_pnl >= 0 ? '+' : ''}${Number(activeStats.total_share_pnl).toLocaleString()}</span></span>}
+                      <span className="text-[var(--color-text-muted)]">Total: <span className={totalVal >= 0 ? 'text-[var(--color-success)] font-bold text-base' : 'text-[var(--color-danger)] font-bold text-base'}>{totalVal >= 0 ? '+' : ''}${Number(totalVal).toLocaleString()}</span></span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Strategy Grid — inline in Summary */}
@@ -642,6 +729,7 @@ export default function OverlayPage() {
                   { key: 'exit25',  label: 'S1 — 25% Profit',    shortLabel: '25% Profit'    },
                   { key: 'exit50',  label: 'S2 — 50% Profit',    shortLabel: '50% Profit'    },
                   { key: 'exitExp', label: 'S3 — Hold to Expiry', shortLabel: 'Hold to Expiry' },
+                  { key: 'roll15',  label: 'S4 — Roll at 15 DTE', shortLabel: 'Roll 15 DTE'   },
                 ];
                 const activeGridScenario = gridFilterScenario === 'all' ? 'exit50' : gridFilterScenario;
                 const visibleRows = [...gridData.filter(r => r.scenarioKey === activeGridScenario)].sort((a, b) => {
@@ -755,7 +843,7 @@ export default function OverlayPage() {
                                   return (
                                     <tr
                                       key={i}
-                                      onClick={() => setGridSelectedRow(isSelected ? null : r)}
+                                      onClick={() => handleGridRowClick(r)}
                                       className={`cursor-pointer transition-colors ${
                                         isSelected
                                           ? 'bg-[var(--color-primary)]/10'

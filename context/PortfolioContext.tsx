@@ -1,6 +1,11 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useLayoutEffect, ReactNode } from 'react';
+
+// useLayoutEffect runs before the browser paints — prevents flash of default data.
+// Falls back to useEffect on the server to avoid SSR warnings.
+const useBrowserLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+import { useUser } from '@clerk/nextjs';
 
 export type Position = {
   id: number;
@@ -18,6 +23,23 @@ const defaultPositions: Position[] = [
   { id: 4, symbol: 'AMZN', shares: 200, entryPrice: 135.00, entryDate: '2023-09-15', currentPrice: 175.00 },
 ];
 
+// Single key per browser — no user-ID suffix needed since Clerk middleware
+// ensures only authenticated users can reach the app.
+const STORAGE_KEY = 'sqilled_portfolio';
+
+function loadFromStorage(): Position[] {
+  if (typeof window === 'undefined') return defaultPositions;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return defaultPositions;
+}
+
+function saveToStorage(positions: Position[]) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(positions)); } catch {}
+}
+
 type PortfolioContextType = {
   positions: Position[];
   setPositions: (positions: Position[]) => void;
@@ -29,7 +51,28 @@ const PortfolioContext = createContext<PortfolioContextType>({
 });
 
 export function PortfolioProvider({ children }: { children: ReactNode }) {
-  const [positions, setPositions] = useState<Position[]>(defaultPositions);
+  const { user } = useUser();
+
+  const [positions, setPositionsState] = useState<Position[]>(defaultPositions);
+
+  // useLayoutEffect runs before the browser paints — no flash of default data
+  useBrowserLayoutEffect(() => {
+    setPositionsState(loadFromStorage());
+  }, []);
+
+  // When user signs out, clear storage so next user starts fresh
+  useEffect(() => {
+    if (user === null) {
+      localStorage.removeItem(STORAGE_KEY);
+      setPositionsState(defaultPositions);
+    }
+  }, [user]);
+
+  const setPositions = (next: Position[]) => {
+    setPositionsState(next);
+    saveToStorage(next);
+  };
+
   return (
     <PortfolioContext.Provider value={{ positions, setPositions }}>
       {children}
