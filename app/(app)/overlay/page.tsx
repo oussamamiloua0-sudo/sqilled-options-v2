@@ -51,7 +51,6 @@ const SCENARIOS = [
   { key: 'exit25',  label: 'Close at 25%',   color: '#6366F1', shortLabel: '25%'    },
   { key: 'exit50',  label: 'Close at 50%',   color: '#F59E0B', shortLabel: '50%'    },
   { key: 'exitExp', label: 'Hold to Expiry', color: '#10B981', shortLabel: 'Expiry' },
-  { key: 'roll15',  label: 'Roll at 15 DTE', color: '#EC4899', shortLabel: 'Roll15' },
 ] as const;
 
 type ScenarioKey = 'exit25' | 'exit50' | 'exitExp' | 'roll15';
@@ -729,7 +728,6 @@ export default function OverlayPage() {
                   { key: 'exit25',  label: 'S1 — 25% Profit',    shortLabel: '25% Profit'    },
                   { key: 'exit50',  label: 'S2 — 50% Profit',    shortLabel: '50% Profit'    },
                   { key: 'exitExp', label: 'S3 — Hold to Expiry', shortLabel: 'Hold to Expiry' },
-                  { key: 'roll15',  label: 'S4 — Roll at 15 DTE', shortLabel: 'Roll 15 DTE'   },
                 ];
                 const activeGridScenario = gridFilterScenario === 'all' ? 'exit50' : gridFilterScenario;
                 const visibleRows = [...gridData.filter(r => r.scenarioKey === activeGridScenario)].sort((a, b) => {
