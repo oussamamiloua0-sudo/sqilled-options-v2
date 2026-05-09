@@ -198,13 +198,18 @@ export default function OverlayPage() {
   const [gridSortDir, setGridSortDir]               = useState<'asc' | 'desc'>('desc');
   const [logSortKey, setLogSortKey]                 = useState<string>('open_date');
   const [logSortDir, setLogSortDir]                 = useState<'asc' | 'desc'>('asc');
-  const [strategy, setStrategy]                     = useState<'cc' | 'csp'>('cc');
+  const [strategy, setStrategy]                     = useState<'cc' | 'csp' | 'wheel'>('cc');
 
   const [comboChartData, setComboChartData]   = useState<any[]>([]);
   const [comboStatsData, setComboStatsData]   = useState<Record<string, any>>({});
   const [comboTradeLog, setComboTradeLog]     = useState<Partial<Record<ScenarioKey, any[]>>>({});
   const [comboRiskTable, setComboRiskTable]   = useState<any[]>([]);
   const [isLoadingCombo, setIsLoadingCombo]   = useState(false);
+
+  // Wheel strategy state
+  const [wheelData, setWheelData]             = useState<any | null>(null);
+  const [isRunningWheel, setIsRunningWheel]   = useState(false);
+  const [wheelError, setWheelError]           = useState<string | null>(null);
 
   const handleGridSort = (key: string) => {
     if (gridSortKey === key) {
@@ -288,7 +293,39 @@ export default function OverlayPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleWheelSimulate = async () => {
+    setIsRunningWheel(true);
+    setWheelError(null);
+    setWheelData(null);
+    try {
+      const res = await fetch('/api/wheel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: ticker,
+          start: startDate,
+          end: endDate,
+          target_delta: delta,
+          target_dte: dte,
+          close_scenario: 'exitExp',
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || err.error || `Error ${res.status}`);
+      }
+      const data = await res.json();
+      setWheelData(data);
+      setHasSimulated(true);
+    } catch (e: any) {
+      setWheelError(e.message);
+    } finally {
+      setIsRunningWheel(false);
+    }
+  };
+
   const handleSimulate = async () => {
+    if (strategy === 'wheel') { handleWheelSimulate(); return; }
     setIsSimulating(true);
     setError(null);
     const start = new Date(startDate);
@@ -543,20 +580,27 @@ export default function OverlayPage() {
           <div>
             <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider block mb-2">Strategy</label>
             <div className="flex space-x-2">
-              <button onClick={() => { setStrategy('cc'); setHasSimulated(false); setChartData([]); setGridData([]); }}
+              <button onClick={() => { setStrategy('cc'); setHasSimulated(false); setChartData([]); setGridData([]); setWheelData(null); }}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
                   strategy === 'cc'
                     ? 'bg-[var(--color-primary)] text-white'
                     : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)]'
                 }`}
               >Covered Call</button>
-              <button onClick={() => { setStrategy('csp'); setHasSimulated(false); setChartData([]); setGridData([]); }}
+              <button onClick={() => { setStrategy('csp'); setHasSimulated(false); setChartData([]); setGridData([]); setWheelData(null); }}
                 className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
                   strategy === 'csp'
                     ? 'bg-[var(--color-primary)] text-white'
                     : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)]'
                 }`}
               >Cash-Secured Put</button>
+              <button onClick={() => { setStrategy('wheel'); setHasSimulated(false); setChartData([]); setGridData([]); setWheelData(null); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  strategy === 'wheel'
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)]'
+                }`}
+              >Wheel</button>
             </div>
           </div>
 
@@ -573,10 +617,10 @@ export default function OverlayPage() {
             }
           </button>
 
-          {error && (
+          {(error || wheelError) && (
             <div className="flex items-start space-x-2 text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-lg p-3">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>{error}</span>
+              <span>{error || wheelError}</span>
             </div>
           )}
 
@@ -603,6 +647,211 @@ export default function OverlayPage() {
         {/* ── Results ── */}
         <div className="lg:col-span-2 space-y-5">
 
+          {/* ── Wheel results ── */}
+          {strategy === 'wheel' && (
+            <>
+              {isRunningWheel && (
+                <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] flex items-center justify-center h-64">
+                  <div className="text-center">
+                    <span className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block mb-3" />
+                    <p className="text-[var(--color-text-muted)] text-sm">Running wheel simulation…</p>
+                  </div>
+                </div>
+              )}
+
+              {!isRunningWheel && !wheelData && (
+                <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] flex items-center justify-center h-64">
+                  <div className="text-center">
+                    <Activity className="w-12 h-12 text-[var(--color-text-muted)] mx-auto mb-4 opacity-50" />
+                    <p className="text-[var(--color-text-muted)] font-medium">Run simulation to view wheel results</p>
+                  </div>
+                </div>
+              )}
+
+              {wheelData && !isRunningWheel && (
+                <>
+                  {/* Summary stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                    {[
+                      {
+                        label: 'Total P&L',
+                        value: `${wheelData.stats.total_pnl >= 0 ? '+' : ''}$${Number(wheelData.stats.total_pnl).toLocaleString()}`,
+                        color: wheelData.stats.total_pnl >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]',
+                        icon: DollarSign,
+                      },
+                      {
+                        label: 'Complete Rounds',
+                        value: String(wheelData.stats.num_complete_rounds),
+                        color: 'text-white',
+                        icon: Trophy,
+                      },
+                      {
+                        label: 'Assignments',
+                        value: `${wheelData.stats.num_assignments} (${wheelData.stats.put_assignment_rate}%)`,
+                        color: 'text-amber-400',
+                        icon: TrendingDown,
+                      },
+                      {
+                        label: 'Called Away',
+                        value: String(wheelData.stats.num_called_away),
+                        color: 'text-[var(--color-primary)]',
+                        icon: Calendar,
+                      },
+                      {
+                        label: 'Final Phase',
+                        value: wheelData.stats.final_phase,
+                        color: wheelData.stats.final_phase === 'PUT'
+                          ? 'text-[#6366F1]'
+                          : wheelData.stats.final_phase === 'CALL'
+                          ? 'text-[#F59E0B]'
+                          : 'text-[var(--color-success)]',
+                        icon: Activity,
+                      },
+                    ].map(m => (
+                      <MetricCard key={m.label} label={m.label} value={m.value} color={m.color} icon={m.icon} />
+                    ))}
+                  </div>
+
+                  {/* Equity curve */}
+                  <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-6 shadow-sm">
+                    <h2 className="text-xl font-semibold text-white mb-4">Cumulative P&amp;L</h2>
+                    <div className="h-[260px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={wheelData.equity_curve.dates.map((d: string, i: number) => ({
+                            date: d,
+                            pnl: wheelData.equity_curve.cum_pnl[i],
+                          }))}
+                          margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                          <XAxis dataKey="date" stroke="#94A3B8" tick={{ fill: '#94A3B8', fontSize: 10, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" tickFormatter={(v: string) => v.slice(0, 7)} />
+                          <YAxis stroke="#94A3B8" tick={{ fill: '#94A3B8', fontSize: 10, fontFamily: 'var(--font-mono)' }} axisLine={false} tickLine={false}
+                            tickFormatter={(v: number) => `$${v >= 0 ? '+' : ''}${Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0)}`} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: '#1E293B', borderColor: '#334155', color: '#F8FAFC', borderRadius: '8px', fontFamily: 'var(--font-mono)' }}
+                            formatter={(v: any) => [`${Number(v) >= 0 ? '+' : ''}$${Number(v).toFixed(2)}`, 'Cum P&L']}
+                          />
+                          <ReferenceLine y={0} stroke="#475569" />
+                          <Line type="monotone" dataKey="pnl" stroke="#6366F1" strokeWidth={2.5} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)] flex flex-wrap gap-6 font-mono text-sm">
+                      <span className="text-[var(--color-text-muted)] text-xs uppercase tracking-wider font-semibold">P&amp;L Breakdown</span>
+                      <span className="text-[var(--color-text-muted)]">Options: <span className={wheelData.stats.total_option_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{wheelData.stats.total_option_pnl >= 0 ? '+' : ''}${Number(wheelData.stats.total_option_pnl).toLocaleString()}</span></span>
+                      <span className="text-[var(--color-text-muted)]">Stock: <span className={wheelData.stats.total_stock_pnl >= 0 ? 'text-[var(--color-success)] font-bold' : 'text-[var(--color-danger)] font-bold'}>{wheelData.stats.total_stock_pnl >= 0 ? '+' : ''}${Number(wheelData.stats.total_stock_pnl).toLocaleString()}</span></span>
+                      <span className="text-[var(--color-text-muted)]">Win Rate: <span className="text-white font-bold">{wheelData.stats.win_rate_options}%</span></span>
+                    </div>
+                  </div>
+
+                  {/* Rounds table */}
+                  {wheelData.rounds.length > 0 && (
+                    <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden">
+                      <div className="p-5 border-b border-[var(--color-border)]">
+                        <h2 className="text-xl font-semibold text-white">Rounds</h2>
+                        <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{wheelData.rounds.length} total · avg {wheelData.stats.avg_round_pnl >= 0 ? '+' : ''}${Number(wheelData.stats.avg_round_pnl).toFixed(0)}/round</p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm font-mono">
+                          <thead>
+                            <tr className="border-b border-[var(--color-border)] bg-[#1a2535]">
+                              {['#', 'Started', 'Closed', 'Via', 'Assign Strike', 'Cost Basis', 'Called Strike', 'P&L'].map(h => (
+                                <th key={h} className="text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider px-4 py-3">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[var(--color-border)]">
+                            {wheelData.rounds.map((r: any, i: number) => (
+                              <tr key={i} className="hover:bg-[var(--color-surface-hover)] transition-colors">
+                                <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{i + 1}</td>
+                                <td className="px-4 py-2.5 text-white">{r.started}</td>
+                                <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{r.closed ?? '—'}</td>
+                                <td className="px-4 py-2.5">
+                                  {r.closed_via
+                                    ? <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${r.closed_via === 'called_away' ? 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]' : 'bg-amber-500/20 text-amber-400'}`}>
+                                        {r.closed_via === 'called_away' ? 'Called Away' : r.closed_via}
+                                      </span>
+                                    : <span className="text-xs text-[var(--color-text-muted)]">Open</span>
+                                  }
+                                </td>
+                                <td className="px-4 py-2.5 text-white">{r.assignment_strike ? `$${Number(r.assignment_strike).toFixed(0)}` : '—'}</td>
+                                <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{r.cost_basis ? `$${Number(r.cost_basis).toFixed(2)}` : '—'}</td>
+                                <td className="px-4 py-2.5 text-white">{r.called_away_strike ? `$${Number(r.called_away_strike).toFixed(0)}` : '—'}</td>
+                                <td className={`px-4 py-2.5 font-bold ${r.pnl >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>
+                                  {r.pnl >= 0 ? '+' : ''}${Number(r.pnl).toFixed(2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Trades timeline */}
+                  {wheelData.trades.length > 0 && (
+                    <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] overflow-hidden">
+                      <div className="p-5 border-b border-[var(--color-border)] flex items-center justify-between flex-wrap gap-3">
+                        <div>
+                          <h2 className="text-xl font-semibold text-white">Trades Timeline</h2>
+                          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{wheelData.trades.length} trades</p>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-[var(--color-text-muted)]">
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#6366F1] inline-block" />PUT</span>
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] inline-block" />CALL</span>
+                          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#10B981] inline-block" />STOCK</span>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm font-mono">
+                          <thead>
+                            <tr className="border-b border-[var(--color-border)] bg-[#1a2535]">
+                              {['Phase', 'Open Date', 'Close Date', 'Strike', 'Premium', 'P&L', 'Event'].map(h => (
+                                <th key={h} className="text-left text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider px-4 py-3">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[var(--color-border)]">
+                            {wheelData.trades.map((t: any, i: number) => {
+                              const phase: string = t.phase ?? (t.assigned !== undefined ? 'PUT' : t.called_away !== undefined ? 'CALL' : 'STOCK');
+                              const phaseColor = phase === 'PUT' ? '#6366F1' : phase === 'CALL' ? '#F59E0B' : '#10B981';
+                              const premUsd = t.premium_usd != null ? Number(t.premium_usd) : t.premium != null ? Number(t.premium) * 100 : null;
+                              return (
+                                <tr key={i} className="hover:bg-[var(--color-surface-hover)] transition-colors">
+                                  <td className="px-4 py-2.5">
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: `${phaseColor}20`, color: phaseColor }}>{phase}</span>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{t.open_date ?? t.date ?? '—'}</td>
+                                  <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{t.close_date ?? '—'}</td>
+                                  <td className="px-4 py-2.5 text-white">{t.strike ? `$${Number(t.strike).toFixed(0)}` : '—'}</td>
+                                  <td className="px-4 py-2.5 text-[var(--color-success)]">{premUsd != null ? `$${premUsd.toFixed(2)}` : '—'}</td>
+                                  <td className={`px-4 py-2.5 font-bold ${t.pnl >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>
+                                    {t.pnl >= 0 ? '+' : ''}${Number(t.pnl).toFixed(2)}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-xs">
+                                    {t.assigned
+                                      ? <span className="text-amber-400 font-bold">Assigned</span>
+                                      : t.called_away
+                                      ? <span className="text-[var(--color-primary)] font-bold">Called Away</span>
+                                      : <span className="text-[var(--color-text-muted)]">—</span>
+                                    }
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {/* CC/CSP tabs — hidden when wheel strategy is active */}
+          {strategy !== 'wheel' && (<>
           {/* Result tab switcher */}
           <div className="flex space-x-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-1 w-fit">
             {RESULT_TABS.map(({ key, label, icon: Icon }) => (
@@ -1242,6 +1491,7 @@ export default function OverlayPage() {
           )}
 
           {/* ── Grid tab ── */}
+          </>)}
         </div>
       </div>
     </div>
