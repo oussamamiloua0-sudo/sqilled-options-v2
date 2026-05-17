@@ -199,6 +199,7 @@ export default function OverlayPage() {
   const [logSortKey, setLogSortKey]                 = useState<string>('open_date');
   const [logSortDir, setLogSortDir]                 = useState<'asc' | 'desc'>('asc');
   const [strategy, setStrategy]                     = useState<'cc' | 'csp' | 'wheel'>('cc');
+  const [ivRegime, setIvRegime]                     = useState<'all' | 'high' | 'low'>('all');
 
   const [comboChartData, setComboChartData]   = useState<any[]>([]);
   const [comboStatsData, setComboStatsData]   = useState<Record<string, any>>({});
@@ -244,7 +245,7 @@ export default function OverlayPage() {
       const res = await fetch('/api/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: ticker, delta: row.delta, dte: row.dte, start: startDate, end: endDate, strategy }),
+        body: JSON.stringify({ symbol: ticker, delta: row.delta, dte: row.dte, start: startDate, end: endDate, strategy, iv_regime: ivRegime }),
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -308,6 +309,7 @@ export default function OverlayPage() {
           target_delta: delta,
           target_dte: dte,
           close_scenario: 'exitExp',
+          iv_regime: ivRegime,
         }),
       });
       if (!res.ok) {
@@ -354,7 +356,7 @@ export default function OverlayPage() {
       const res = await fetch('/api/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: ticker, delta, dte, start: startDate, end: endDate, strategy }),
+        body: JSON.stringify({ symbol: ticker, delta, dte, start: startDate, end: endDate, strategy, iv_regime: ivRegime }),
       });
       if (!res.ok) {
         posthog?.capture('api_error', { endpoint: '/api/simulate', status_code: res.status });
@@ -408,7 +410,7 @@ export default function OverlayPage() {
       const res = await fetch('/api/grid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: ticker, start: startDate, end: endDate, strategy }),
+        body: JSON.stringify({ symbol: ticker, start: startDate, end: endDate, strategy, iv_regime: ivRegime }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -601,6 +603,25 @@ export default function OverlayPage() {
                     : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)]'
                 }`}
               >Wheel</button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider block mb-2">IV Regime</label>
+            <div className="flex space-x-2">
+              {(['all', 'high', 'low'] as const).map((regime) => (
+                <button
+                  key={regime}
+                  onClick={() => setIvRegime(regime)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    ivRegime === regime
+                      ? 'bg-[var(--color-primary)] text-white'
+                      : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-white border border-[var(--color-border)]'
+                  }`}
+                >
+                  {regime === 'all' ? 'All IV' : regime === 'high' ? 'High IV ≥18%' : 'Low IV <18%'}
+                </button>
+              ))}
             </div>
           </div>
 
