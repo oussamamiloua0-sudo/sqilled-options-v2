@@ -361,7 +361,7 @@ export default function OverlayPage() {
       if (!res.ok) {
         posthog?.capture('api_error', { endpoint: '/api/simulate', status_code: res.status });
         const err = await res.json();
-        throw new Error(err.error || `Error ${res.status}`);
+        throw new Error(err.detail || err.error || `Error ${res.status}`);
       }
       const data = await res.json();
 
