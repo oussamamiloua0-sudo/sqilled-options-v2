@@ -1,20 +1,43 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# sqilled Options
 
-# Run and deploy your AI Studio app
+Options strategy backtesting tool. Simulate covered calls, cash-secured puts, wheel strategy, and more on SPY, QQQ, IWM, and AAPL using real historical options data going back 8+ years.
 
-This contains everything you need to run your app locally.
+## Stack
 
-View your app in AI Studio: https://ai.studio/apps/eabcc231-f593-478f-9cb5-4e50e9b05f85
+- **Frontend** — Next.js 15, Tailwind CSS, Recharts, Clerk auth
+- **Backend** — FastAPI (Python), hosted on DigitalOcean
+- **Database** — DigitalOcean Managed MySQL, ~10M+ option EOD rows
+- **Hosting** — Vercel
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js, a running backend (see backend repo)
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```bash
+   npm install
+   ```
+
+2. Copy the example env file and fill in your keys:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+3. Run the dev server:
+   ```bash
+   npm run dev
+   ```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key |
+| `CLERK_SECRET_KEY` | Clerk secret key |
+| `NEXT_PUBLIC_POSTHOG_KEY` | PostHog project key |
+| `NEXT_PUBLIC_POSTHOG_HOST` | PostHog host URL |
+| `DROPLET_API_URL` | Backend API URL (default: http://147.182.205.5:8000) |
+
+## Backend
+
+See [Ivol_Pipeline_Git](https://github.com/oussamamiloua0-sudo/Ivol_Pipeline_Git) for the FastAPI backend and data pipeline.
