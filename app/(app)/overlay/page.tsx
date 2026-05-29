@@ -6,8 +6,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import {
-  Play, Settings2, Activity, Eye, EyeOff, TrendingDown, DollarSign,
-  Calendar, BarChart2, Clock, Trophy, AlertCircle, List, LayoutList, Grid3X3,
+  Play, Settings2, Activity, Eye, EyeOff, TrendingDown, TrendingUp, DollarSign,
+  Calendar, BarChart2, Clock, Trophy, AlertCircle, List, LayoutList, Grid3X3, Percent,
 } from 'lucide-react';
 import { usePortfolio, Position } from '@/context/PortfolioContext';
 import { usePostHog } from 'posthog-js/react';
@@ -48,20 +48,22 @@ function getAxisTicks(data: { month: string }[]): string[] {
 }
 
 const SCENARIOS = [
-  { key: 'exit25',  label: 'Close at 25%',   color: '#6366F1', shortLabel: '25%'    },
-  { key: 'exit50',  label: 'Close at 50%',   color: '#F59E0B', shortLabel: '50%'    },
-  { key: 'exitExp', label: 'Hold to Expiry', color: '#10B981', shortLabel: 'Expiry' },
+  { key: 'exit25',    label: 'Close at 25%',   color: '#6366F1', shortLabel: '25%'     },
+  { key: 'exit50',    label: 'Close at 50%',   color: '#F59E0B', shortLabel: '50%'     },
+  { key: 'exitExp',   label: 'Hold to Expiry', color: '#10B981', shortLabel: 'Expiry'  },
+  { key: 'exit_2x',   label: '2× Stop-Loss',   color: '#EF4444', shortLabel: '2× Stop' },
+  { key: 'exit50_21', label: '50% or 21 DTE',  color: '#A855F7', shortLabel: '50/21d'  },
 ] as const;
 
-type ScenarioKey = 'exit25' | 'exit50' | 'exitExp' | 'roll15';
+type ScenarioKey = 'exit25' | 'exit50' | 'exitExp' | 'exit_2x' | 'exit50_21';
 const TICKERS = ['SPY', 'QQQ', 'IWM'] as const;
 
 // Mock trade log — deterministic (no Math.random) to avoid SSR hydration mismatch
-function buildMockTrades(scenario: ScenarioKey) {
+function buildMockTrades(scenario: 'exit25' | 'exit50' | 'exitExp') {
   const months   = ['2023-01','2023-02','2023-03','2023-04','2023-05','2023-06','2023-07','2023-08','2023-09','2023-10','2023-11','2023-12','2024-01','2024-02','2024-03','2024-04','2024-05','2024-06'];
   const strikes  = [405,408,411,415,418,421,424,427,430,433,437,440,445,449,453,458,462,466];
   const premiums = [1.85,1.92,2.10,2.34,1.76,2.55,2.20,1.98,2.40,1.65,2.80,2.15,2.50,2.30,2.70,2.10,2.45,2.60];
-  const daysMap  = { exit25: [9,10,11,9,12,10,8,11,13,9,10,12,11,9,10,13,11,10], exit50: [18,20,22,19,24,21,17,22,25,18,21,24,22,18,20,26,22,20], exitExp: [30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35], roll15: [15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15] };
+  const daysMap  = { exit25: [9,10,11,9,12,10,8,11,13,9,10,12,11,9,10,13,11,10], exit50: [18,20,22,19,24,21,17,22,25,18,21,24,22,18,20,26,22,20], exitExp: [30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35,30,35] };
   // exitExp: assign losses at indices 4,10,16 (every ~6 trades)
   const lossSet = new Set([4,10,16]);
   return months.map((m, i) => {
@@ -84,11 +86,12 @@ function buildMockTrades(scenario: ScenarioKey) {
   });
 }
 
-const MOCK_TRADE_LOG: Record<ScenarioKey, any[]> = {
-  exit25:  buildMockTrades('exit25'),
-  exit50:  buildMockTrades('exit50'),
-  exitExp: buildMockTrades('exitExp'),
-  roll15:  buildMockTrades('exitExp'),
+const MOCK_TRADE_LOG: Partial<Record<ScenarioKey, any[]>> = {
+  exit25:    buildMockTrades('exit25'),
+  exit50:    buildMockTrades('exit50'),
+  exitExp:   buildMockTrades('exitExp'),
+  exit_2x:   [],
+  exit50_21: [],
 };
 type Ticker = typeof TICKERS[number];
 
@@ -200,6 +203,8 @@ export default function OverlayPage() {
   const [logSortDir, setLogSortDir]                 = useState<'asc' | 'desc'>('asc');
   const [strategy, setStrategy]                     = useState<'cc' | 'csp' | 'wheel'>('cc');
   const [ivRegime, setIvRegime]                     = useState<'all' | 'high' | 'low'>('all');
+  const [spyBenchmark, setSpyBenchmark] = useState<{ return_pct: number; curve: { date: string; value: number }[] } | null>(null);
+  const [showSpy, setShowSpy]           = useState(true);
 
   const [comboChartData, setComboChartData]   = useState<any[]>([]);
   const [comboStatsData, setComboStatsData]   = useState<Record<string, any>>({});
@@ -249,10 +254,15 @@ export default function OverlayPage() {
       });
       if (!res.ok) return;
       const data = await res.json();
-      const { dates, exit25, exit50, exitExp, roll15 } = data.curves;
-      setComboChartData(dates.map((d: string, i: number) => ({
-        month: d.slice(0, 7), exit25: exit25[i], exit50: exit50[i], exitExp: exitExp[i], roll15: roll15?.[i] ?? null,
-      })));
+      const { dates, exit25, exit50, exitExp, exit_2x, exit50_21 } = data.curves;
+      const spyCombo: Record<string, number> = {};
+      if (data.spy_benchmark?.curve) {
+        for (const pt of data.spy_benchmark.curve) spyCombo[pt.date.slice(0, 7)] = pt.value;
+      }
+      setComboChartData(dates.map((d: string, i: number) => {
+        const month = d.slice(0, 7);
+        return { month, exit25: exit25[i], exit50: exit50[i], exitExp: exitExp[i], exit_2x: exit_2x?.[i], exit50_21: exit50_21?.[i], spy: spyCombo[month] };
+      }));
       setComboStatsData(data.stats ?? {});
       setComboTradeLog(data.trade_log ?? {});
       setComboRiskTable(data.risk_table ?? []);
@@ -365,15 +375,18 @@ export default function OverlayPage() {
       }
       const data = await res.json();
 
-      // Build chart data — zip dates + values
-      const { dates, exit25, exit50, exitExp, roll15 } = data.curves;
-      const chart = dates.map((d: string, i: number) => ({
-        month: d.slice(0, 7),
-        exit25:  exit25[i],
-        exit50:  exit50[i],
-        exitExp: exitExp[i],
-        roll15:  roll15?.[i] ?? null,
-      }));
+      // Build chart data — zip dates + curve values for all scenarios + SPY
+      const spyMonthMap: Record<string, number> = {};
+      if (data.spy_benchmark?.curve) {
+        for (const pt of data.spy_benchmark.curve) spyMonthMap[pt.date.slice(0, 7)] = pt.value;
+      }
+      setSpyBenchmark(data.spy_benchmark ?? null);
+
+      const { dates, exit25, exit50, exitExp, exit_2x, exit50_21 } = data.curves;
+      const chart = dates.map((d: string, i: number) => {
+        const month = d.slice(0, 7);
+        return { month, exit25: exit25[i], exit50: exit50[i], exitExp: exitExp[i], exit_2x: exit_2x?.[i], exit50_21: exit50_21?.[i], spy: spyMonthMap[month] };
+      });
       setChartData(chart);
       setRiskTable(data.risk_table);
       setStatsData(data.stats);
@@ -469,7 +482,7 @@ export default function OverlayPage() {
   const simLog    = displayLog[activeScenario];
   const activeLog = (Array.isArray(simLog) && simLog.length > 0)
     ? simLog
-    : MOCK_TRADE_LOG[activeScenario];
+    : (MOCK_TRADE_LOG[activeScenario] ?? []);
 
   const RESULT_TABS: { key: ResultTab; label: string; icon: any }[] = [
     { key: 'summary', label: 'Summary',   icon: BarChart2  },
@@ -925,6 +938,18 @@ export default function OverlayPage() {
                       {showPortfolio ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                       <span>Base Portfolio</span>
                     </button>
+                    {spyBenchmark && (
+                      <button onClick={() => setShowSpy(!showSpy)}
+                        className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                          showSpy
+                            ? 'border-[#94A3B8] text-[#94A3B8] bg-[#94A3B8]/10'
+                            : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[#94A3B8] hover:text-[#94A3B8]'
+                        }`}
+                      >
+                        {showSpy ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        <span>SPY B&H {spyBenchmark.return_pct >= 0 ? '+' : ''}{spyBenchmark.return_pct}%</span>
+                      </button>
+                    )}
                     <button onClick={() => setShowScenarios(!showScenarios)}
                       className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                         showScenarios
@@ -952,6 +977,9 @@ export default function OverlayPage() {
                             exit25:    parseFloat((d.exit25  - 100).toFixed(2)),
                             exit50:    parseFloat((d.exit50  - 100).toFixed(2)),
                             exitExp:   parseFloat((d.exitExp - 100).toFixed(2)),
+                            exit_2x:   d.exit_2x   != null ? parseFloat((d.exit_2x   - 100).toFixed(2)) : undefined,
+                            exit50_21: d.exit50_21 != null ? parseFloat((d.exit50_21 - 100).toFixed(2)) : undefined,
+                            spy:       d.spy       != null ? parseFloat((d.spy       - 100).toFixed(2)) : undefined,
                             portfolio: portNorm,
                           };
                         });
@@ -967,11 +995,14 @@ export default function OverlayPage() {
                         formatter={(value: any) => [`${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(2)}%`, undefined]}
                         labelFormatter={(val: any) => fmtAxisDate(String(val))}
                       />
+                      {showSpy && spyBenchmark && (
+                        <Line type="monotone" dataKey="spy" name="SPY B&H" stroke="#94A3B8" strokeWidth={1.5} strokeDasharray="4 4" dot={false} connectNulls />
+                      )}
                       {showPortfolio && (
-                        <Line type="monotone" dataKey="portfolio" name="Base Portfolio" stroke="#94A3B8" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls />
+                        <Line type="monotone" dataKey="portfolio" name="Base Portfolio" stroke="#64748B" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls />
                       )}
                       {showScenarios && SCENARIOS.map(s => (
-                        <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2.5} dot={false} />
+                        <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2.5} dot={false} connectNulls />
                       ))}
                     </LineChart>
                   </ResponsiveContainer>
@@ -991,6 +1022,47 @@ export default function OverlayPage() {
                   );
                 })()}
               </div>
+
+              {/* Scenario Stats tiles */}
+              {hasSimulated && (() => {
+                const s = activeStats;
+                const cagrPct = s.cagr != null ? s.cagr * 100 : null;
+                const spyRet  = spyBenchmark?.return_pct;
+                const tiles = [
+                  { label: 'Total Return',     value: s.total_return != null ? `${Number(s.total_return) >= 0 ? '+' : ''}${Number(s.total_return).toFixed(1)}%` : '—', sub: spyRet != null ? `vs SPY ${spyRet >= 0 ? '+' : ''}${spyRet}%` : undefined, color: s.total_return != null && Number(s.total_return) >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]', icon: TrendingUp },
+                  { label: 'CAGR',             value: cagrPct != null ? `${cagrPct >= 0 ? '+' : ''}${cagrPct.toFixed(1)}%` : '—', color: cagrPct != null && cagrPct >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]', icon: TrendingUp },
+                  { label: 'Win Rate',         value: s.win_rate != null ? `${Number(s.win_rate).toFixed(1)}%` : '—', color: 'text-white', icon: Percent },
+                  { label: 'Sharpe',           value: s.sharpe != null ? Number(s.sharpe).toFixed(2) : '—', color: 'text-white', icon: BarChart2 },
+                  { label: 'Profit Factor',    value: s.profit_factor != null ? Number(s.profit_factor).toFixed(2) : '—', sub: s.profit_factor != null ? (Number(s.profit_factor) >= 1.5 ? 'Strong edge' : Number(s.profit_factor) >= 1 ? 'Positive edge' : 'Losing edge') : undefined, color: s.profit_factor != null ? (Number(s.profit_factor) >= 1 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]') : 'text-white', icon: BarChart2 },
+                  { label: 'Avg Win',          value: s.avg_win != null ? `+$${Number(s.avg_win).toFixed(0)}` : '—', color: 'text-[var(--color-success)]', icon: DollarSign },
+                  { label: 'Avg Loss',         value: s.avg_loss != null ? `-$${Math.abs(Number(s.avg_loss)).toFixed(0)}` : '—', color: s.avg_loss != null ? 'text-[var(--color-danger)]' : 'text-white', icon: TrendingDown },
+                  { label: 'Exp. Value',       value: s.ev != null ? `${Number(s.ev) >= 0 ? '+' : ''}$${Number(s.ev).toFixed(0)}` : '—', color: s.ev != null ? (Number(s.ev) >= 0 ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]') : 'text-white', icon: Activity },
+                  { label: 'Max Consec. Loss', value: s.max_consec_loss != null ? String(s.max_consec_loss) : '—', sub: 'consecutive losses', color: 'text-white', icon: AlertCircle },
+                  { label: 'Max $ Drawdown',   value: s.max_dd_dollar != null ? `-$${Number(s.max_dd_dollar).toFixed(0)}` : '—', color: s.max_dd_dollar != null && Number(s.max_dd_dollar) > 0 ? 'text-[var(--color-danger)]' : 'text-[var(--color-success)]', icon: TrendingDown },
+                  { label: 'Prem. Capture',    value: s.premium_capture != null ? `${Number(s.premium_capture).toFixed(1)}%` : '—', sub: 'of premium kept', color: 'text-white', icon: Percent },
+                  { label: 'Calmar',           value: s.calmar != null ? Number(s.calmar).toFixed(2) : '—', sub: 'CAGR ÷ max drawdown', color: s.calmar != null ? (Number(s.calmar) >= 0.5 ? 'text-[var(--color-success)]' : 'text-amber-400') : 'text-white', icon: Trophy },
+                ];
+                return (
+                  <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-6 shadow-sm">
+                    <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+                      <h2 className="text-xl font-semibold text-white">Scenario Stats</h2>
+                      <div className="flex flex-wrap gap-1">
+                        {SCENARIOS.map(sc => (
+                          <button key={sc.key} onClick={() => setActiveScenario(sc.key as ScenarioKey)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeScenario === sc.key ? 'text-white' : 'text-[var(--color-text-muted)] hover:text-white'}`}
+                            style={activeScenario === sc.key ? { backgroundColor: sc.color } : {}}
+                          >{sc.shortLabel}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {tiles.map(t => (
+                        <MetricCard key={t.label} label={t.label} value={t.value} sub={t.sub} color={t.color} icon={t.icon} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Strategy Grid — inline in Summary */}
               {(() => {
